@@ -1,35 +1,13 @@
-// Refined Models - Using References for Better Data Consistency
-// Export all refined models
-
-const User = require('./User.refined');
-const Company = require('./Company');
-const JobListing = require('./JobListing');
-const Application = require('./Application.refined');
-const Assessment = require('./Assessment');
-const Interview = require('./Interview.refined');
-
+// Export all schemas for easy importing
 module.exports = {
-  User,
-  Company,
-  JobListing,
-  Application,
-  Assessment,
-  Interview
+  User: require('./User'),
+  Company: require('./Company'),
+  TeamMember: require('./TeamMember'),
+  JobListing: require('./JobListing'),
+  Application: require('./Application'),
+  Assessment: require('./Assessment'),
+  AssessmentResult: require('./AssessmentResult'),
+  Interview: require('./Interview'),
+  Offer: require('./Offer'),
+  Communication: require('./Communication')
 };
-
-// Usage Examples:
-// const { User, Application } = require('./models');
-// 
-// // Create user
-// const user = await User.create({...});
-// 
-// // Create application with reference
-// const app = await Application.create({
-//   candidateId: user._id,
-//   jobListingId: jobId,
-//   ...
-// });
-// 
-// // Get application with candidate data
-// const fullApp = await Application.findById(appId)
-//   .populate('candidateId', 'name email resume projects skills');

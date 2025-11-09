@@ -1,22 +1,22 @@
 {
-  "name": "bridge-ai-models",
+  "name": "hiring-platform-schemas",
   "version": "1.0.0",
-  "description": "Mongoose models for Bridge AI - Job matching platform",
+  "description": "MongoDB schemas for a hiring platform with modular design",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "mongoose",
     "mongodb",
-    "models",
-    "job-matching",
-    "bridge-ai"
+    "mongoose",
+    "schemas",
+    "hiring",
+    "recruitment"
   ],
   "author": "",
-  "license": "MIT",
+  "license": "ISC",
   "dependencies": {
-    "mongoose": "^7.0.0"
+    "mongoose": "^8.0.0"
   },
   "peerDependencies": {
     "mongoose": ">=6.0.0"

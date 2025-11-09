@@ -4,8 +4,7 @@ const assessmentSchema = new mongoose.Schema({
   assessmentId: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   
   // Assessment Details
@@ -16,11 +15,11 @@ const assessmentSchema = new mongoose.Schema({
   description: String,
   assessmentType: {
     type: String,
-    required: true,
-    enum: ['coding', 'technical_quiz', 'case_study', 'video']
+    enum: ['coding', 'technical_quiz', 'case_study', 'video'],
+    required: true
   },
   
-  // Coding Challenge
+  // Coding Challenge (if type = coding)
   codingChallenge: {
     problemStatement: String,
     starterCode: String,
@@ -32,43 +31,34 @@ const assessmentSchema = new mongoose.Schema({
         default: false
       }
     }],
-    allowedLanguages: [{
-      type: String,
-      enum: ['python', 'javascript', 'java', 'cpp', 'go', 'ruby', 'typescript']
-    }],
+    allowedLanguages: [String],
     difficulty: {
       type: String,
       enum: ['easy', 'medium', 'hard']
     }
   },
   
-  // Quiz Questions
+  // Quiz Questions (if type = technical_quiz)
   questions: [{
     questionText: String,
     questionType: {
       type: String,
-      enum: ['multiple_choice', 'code', 'essay', 'true_false']
+      enum: ['multiple_choice', 'code', 'essay']
     },
     options: [String],
-    correctAnswer: String,
-    points: {
-      type: Number,
-      default: 1
-    }
+    correctAnswer: String, // Should be encrypted in production
+    points: Number
   }],
   
   // Timing & Scoring
-  timeLimit: {
-    type: Number,
-    required: true
-  },
+  timeLimit: Number, // in minutes
   totalPoints: Number,
   passingScore: Number,
   
-  // Ownership & Usage
+  // Ownership
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company',
+    ref: 'TeamMember',
     required: true
   },
   isPublic: {
@@ -76,23 +66,15 @@ const assessmentSchema = new mongoose.Schema({
     default: false
   },
   
-  // Usage Stats
+  // Usage Stats (can be calculated)
   timesUsed: {
     type: Number,
     default: 0
   },
-  averageScore: {
-    type: Number,
-    default: 0
-  },
-  averageCompletionTime: {
-    type: Number,
-    default: 0
-  }
+  averageScore: Number,
+  averageCompletionTime: Number
 }, {
   timestamps: true
 });
 
-const Assessment = mongoose.model('Assessment', assessmentSchema);
-
-module.exports = Assessment;
+module.exports = mongoose.model('Assessment', assessmentSchema);

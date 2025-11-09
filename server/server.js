@@ -1,27 +1,43 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
+const connectDB = require('./config/database');
+const { Company } = require('./models');
 
 const app = express();
+
+// Connect to MongoDB
+connectDB();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mern-db')
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch((err) => console.error('MongoDB connection error:', err));
-
 // Routes
 app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to MERN Stack API' });
+  res.json({ message: 'Hiring Platform API' });
+});
+
+// Test route - Create a company
+app.post('/api/companies', async (req, res) => {
+  try {
+    const company = await Company.create({
+      companyId: `comp_${Date.now()}`,
+      companyName: req.body.name,
+      companyWebsite: req.body.website,
+      industry: req.body.industry
+    });
+    res.status(201).json(company);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // Import routes here
-// app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/waitlist', require('./routes/waitlistRoutes'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

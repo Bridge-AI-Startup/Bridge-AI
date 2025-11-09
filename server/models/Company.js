@@ -1,36 +1,33 @@
 const mongoose = require('mongoose');
 
 const companySchema = new mongoose.Schema({
-  employerId: {
+  companyId: {
     type: String,
     required: true,
     unique: true,
     index: true
   },
-  email: {
-    type: String,
-    required: true,
-    unique: true,
-    index: true
-  },
-  password: {
-    type: String,
-    select: false
-  },
-  
-  // Basic Information
   companyName: {
     type: String,
-    required: true
+    required: true,
+    index: 'text'
   },
   companyWebsite: String,
+  
+  // Logo
   companyLogo: {
     fileName: String,
     fileUrl: String,
     fileSize: Number,
-    uploadedAt: Date
+    uploadedAt: Date,
+    s3Key: String
   },
   
+  // About
+  oneSentencePitch: String,
+  companyDescription: String,
+  
+  // Location
   headquarters: {
     city: String,
     state: String,
@@ -38,51 +35,19 @@ const companySchema = new mongoose.Schema({
     timezone: String
   },
   
+  // Details
   foundedYear: Number,
-  
-  industry: {
-    type: String,
-    enum: ['ai_ml', 'fintech', 'saas', 'healthtech', 'consumer_apps', 
-           'climate_sustainability', 'edtech', 'open_source', 'other']
-  },
-  
+  industry: String,
   companySize: {
     type: String,
     enum: ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+']
   },
-  
   fundingStage: {
     type: String,
-    enum: ['pre_seed', 'seed', 'series_a', 'series_b', 'series_c', 
-           'series_d', 'public', 'bootstrapped']
+    enum: ['pre_seed', 'seed', 'series_a', 'series_b', 'series_c', 'public', 'bootstrapped']
   },
   
-  // About Company
-  oneSentencePitch: String,
-  companyDescription: String,
-  
-  // Team Members
-  teamMembers: [{
-    memberId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: () => new mongoose.Types.ObjectId()
-    },
-    email: String,
-    name: String,
-    role: {
-      type: String,
-      enum: ['admin', 'hiring_manager', 'recruiter']
-    },
-    invitedAt: Date,
-    joinedAt: Date,
-    status: {
-      type: String,
-      enum: ['pending', 'active', 'inactive'],
-      default: 'pending'
-    }
-  }],
-  
-  // Company Culture
+  // Culture
   companyValues: [String],
   benefits: [String],
   
@@ -93,18 +58,6 @@ const companySchema = new mongoose.Schema({
     github: String
   },
   
-  // Subscription
-  subscriptionTier: {
-    type: String,
-    enum: ['free', 'starter', 'pro', 'enterprise'],
-    default: 'free'
-  },
-  subscriptionStatus: {
-    type: String,
-    enum: ['active', 'trial', 'cancelled', 'expired'],
-    default: 'trial'
-  },
-  
   // Settings
   settings: {
     emailNotifications: {
@@ -113,7 +66,7 @@ const companySchema = new mongoose.Schema({
     },
     autoMatchEnabled: {
       type: Boolean,
-      default: true
+      default: false
     },
     assessmentsRequired: {
       type: Boolean,
@@ -121,15 +74,10 @@ const companySchema = new mongoose.Schema({
     }
   },
   
-  // Metadata
-  lastLoginAt: Date,
+  // Status
   isActive: {
     type: Boolean,
     default: true
-  },
-  emailVerified: {
-    type: Boolean,
-    default: false
   },
   onboardingCompleted: {
     type: Boolean,
@@ -143,16 +91,4 @@ const companySchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
-companySchema.index({ companyName: 'text' });
-
-// Methods
-companySchema.methods.toJSON = function() {
-  const company = this.toObject();
-  delete company.password;
-  return company;
-};
-
-const Company = mongoose.model('Company', companySchema);
-
-module.exports = Company;
+module.exports = mongoose.model('Company', companySchema);

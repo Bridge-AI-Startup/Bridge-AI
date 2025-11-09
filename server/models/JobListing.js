@@ -4,32 +4,26 @@ const jobListingSchema = new mongoose.Schema({
   listingId: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
-  
-  // Company Reference
   companyId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Company',
     required: true,
     index: true
   },
-  companyName: String, // denormalized
   
-  // Basic Information
+  // Basic Info
   roleTitle: {
     type: String,
-    required: true
+    required: true,
+    index: 'text'
   },
-  department: {
-    type: String,
-    enum: ['Engineering', 'Design', 'Data Science', 'Product', 'Marketing', 
-           'Sales', 'Operations', 'Other']
-  },
+  department: String,
   roleDescription: {
     type: String,
-    required: true
+    required: true,
+    index: 'text'
   },
   
   // Responsibilities & Qualifications
@@ -38,11 +32,10 @@ const jobListingSchema = new mongoose.Schema({
   
   // Skills
   requiredSkills: [{
-    skillId: {
-      type: mongoose.Schema.Types.ObjectId,
-      default: () => new mongoose.Types.ObjectId()
+    skillName: {
+      type: String,
+      index: true
     },
-    skillName: String,
     proficiencyLevel: {
       type: String,
       enum: ['beginner', 'intermediate', 'advanced']
@@ -51,26 +44,21 @@ const jobListingSchema = new mongoose.Schema({
   preferredSkills: [String],
   
   // Work Details
-  workDetails: {
-    locationType: {
-      type: String,
-      required: true,
-      enum: ['remote', 'hybrid', 'in_person']
-    },
-    officeLocation: {
-      city: String,
-      state: String,
-      country: String
-    },
-    startDate: Date,
-    endDate: Date,
-    duration: String,
-    hoursPerWeek: {
-      type: Number,
-      required: true
-    },
-    schedule: String
+  locationType: {
+    type: String,
+    required: true,
+    enum: ['remote', 'hybrid', 'in_person'],
+    index: true
   },
+  officeLocation: {
+    city: String,
+    state: String,
+    country: String
+  },
+  startDate: Date,
+  duration: String,
+  hoursPerWeek: Number,
+  schedule: String,
   
   // Compensation
   compensation: {
@@ -97,34 +85,13 @@ const jobListingSchema = new mongoose.Schema({
     benefits: [String]
   },
   
-  // AI Matching
+  // AI Matching (optional, can be enabled later)
   aiMatching: {
     enabled: {
       type: Boolean,
-      default: true
+      default: false
     },
-    autoMatchThreshold: {
-      type: Number,
-      default: 75
-    },
-    matchingCriteria: {
-      skillsWeight: {
-        type: Number,
-        default: 40
-      },
-      experienceWeight: {
-        type: Number,
-        default: 30
-      },
-      educationWeight: {
-        type: Number,
-        default: 15
-      },
-      projectsWeight: {
-        type: Number,
-        default: 15
-      }
-    }
+    autoMatchThreshold: Number
   },
   
   // Application Settings
@@ -138,10 +105,6 @@ const jobListingSchema = new mongoose.Schema({
       default: false
     },
     customQuestions: [{
-      questionId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: () => new mongoose.Types.ObjectId()
-      },
       question: String,
       type: {
         type: String,
@@ -151,60 +114,11 @@ const jobListingSchema = new mongoose.Schema({
     }]
   },
   
-  // Assessment Requirements
+  // Assessment References
   assessments: [{
-    assessmentId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Assessment'
-    },
-    assessmentType: {
-      type: String,
-      enum: ['coding', 'technical', 'behavioral']
-    },
-    title: String,
-    required: Boolean,
-    timeLimit: Number
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Assessment'
   }],
-  
-  // Application Statistics
-  stats: {
-    totalApplicants: {
-      type: Number,
-      default: 0
-    },
-    newApplicants: {
-      type: Number,
-      default: 0
-    },
-    inReview: {
-      type: Number,
-      default: 0
-    },
-    interviewed: {
-      type: Number,
-      default: 0
-    },
-    offered: {
-      type: Number,
-      default: 0
-    },
-    accepted: {
-      type: Number,
-      default: 0
-    },
-    rejected: {
-      type: Number,
-      default: 0
-    },
-    averageMatchScore: {
-      type: Number,
-      default: 0
-    },
-    totalViews: {
-      type: Number,
-      default: 0
-    }
-  },
   
   // Status & Visibility
   status: {
@@ -220,14 +134,18 @@ const jobListingSchema = new mongoose.Schema({
   },
   
   // Dates
-  postedAt: Date,
+  postedAt: {
+    type: Date,
+    index: -1
+  },
   applicationDeadline: Date,
   closedAt: Date,
   
   // Metadata
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Company'
+    ref: 'TeamMember',
+    index: true
   },
   tags: [String],
   importedFrom: String,
@@ -236,11 +154,7 @@ const jobListingSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes
-jobListingSchema.index({ 'requiredSkills.skillName': 1 });
-jobListingSchema.index({ roleTitle: 'text', roleDescription: 'text' });
-jobListingSchema.index({ postedAt: -1 });
+// Additional indexes
+jobListingSchema.index({ companyId: 1, status: 1 });
 
-const JobListing = mongoose.model('JobListing', jobListingSchema);
-
-module.exports = JobListing;
+module.exports = mongoose.model('JobListing', jobListingSchema);
