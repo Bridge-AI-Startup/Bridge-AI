@@ -7,7 +7,7 @@ import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/config";
-import { signUpWithEmail, signUpWithGoogle } from "@/lib/auth";
+import { signUpWithEmail, signUpWithGoogle, deleteFirebaseUser } from "@/lib/auth";
 
 export default function StudentSignup() {
   const navigate = useNavigate();
@@ -44,9 +44,11 @@ export default function StudentSignup() {
 
     setIsSubmitting(true);
 
+    let firebaseUser = null;
     try {
       // Step 1: Create Firebase user and get ID token
-      const idToken = await signUpWithEmail(email.toLowerCase().trim(), password);
+      const { idToken, user } = await signUpWithEmail(email.toLowerCase().trim(), password);
+      firebaseUser = user;
 
       // Step 2: Send ID token to backend
       const response = await fetch(`${API_URL}/api/auth/student/signup`, {
@@ -71,10 +73,20 @@ export default function StudentSignup() {
         // Navigate to onboarding
         navigate("/Onboarding");
       } else {
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
         setError(data.message || "Signup failed. Please try again.");
       }
     } catch (error) {
       console.error("Signup error:", error);
+
+      // If we created a Firebase user but backend failed, clean it up
+      if (firebaseUser && !error.code?.startsWith('auth/')) {
+        await deleteFirebaseUser(firebaseUser);
+      }
+
       if (error.code === 'auth/email-already-in-use') {
         setError("This email is already registered. Please sign in instead.");
       } else if (error.code === 'auth/invalid-email') {
@@ -93,9 +105,11 @@ export default function StudentSignup() {
     setError("");
     setIsSubmitting(true);
 
+    let firebaseUser = null;
     try {
       // Step 1: Sign in with Google and get ID token
-      const idToken = await signUpWithGoogle();
+      const { idToken, user } = await signUpWithGoogle();
+      firebaseUser = user;
 
       // Step 2: Send ID token to backend
       const response = await fetch(`${API_URL}/api/auth/student/signup`, {
@@ -120,10 +134,20 @@ export default function StudentSignup() {
         // Navigate to onboarding
         navigate("/Onboarding");
       } else {
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
         setError(data.message || "Google sign-up failed. Please try again.");
       }
     } catch (error) {
       console.error("Google signup error:", error);
+
+      // If we created a Firebase user but backend failed, clean it up
+      if (firebaseUser && !error.code?.startsWith('auth/')) {
+        await deleteFirebaseUser(firebaseUser);
+      }
+
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-up cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {

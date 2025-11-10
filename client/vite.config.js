@@ -11,5 +11,10 @@ export default defineConfig({
       legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true'
     }),
     react(),
-  ]
+  ], 
+  server: {
+    host: '0.0.0.0',  // 👈 binds to all interfaces (needed for ngrok)
+    strictPort: false,
+    allowedHosts: ['.ngrok-free.app', 'localhost', '127.0.0.1'], // 👈 allow any ngrok subdomain
+  },
 });

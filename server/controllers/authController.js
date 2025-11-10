@@ -427,17 +427,16 @@ const linkFirebaseAccount = async (req, res) => {
 };
 
 /**
- * @desc    Student/User signup with Firebase
+ * @desc    Student signup with Firebase ID token
  * @route   POST /api/auth/student/signup
  * @access  Public
  */
 const studentSignup = async (req, res) => {
   try {
-    // Check if Firebase Admin SDK is initialized
     if (!admin.apps.length) {
       return res.status(500).json({
         success: false,
-        message: 'Firebase Admin SDK is not initialized. Please configure FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_PROJECT_ID',
+        message: 'Firebase Admin SDK is not initialized',
       });
     }
 
@@ -463,10 +462,7 @@ const studentSignup = async (req, res) => {
 
     // Check if user already exists
     const existingUser = await User.findOne({
-      $or: [
-        { uid: uid },
-        { email: email }
-      ]
+      $or: [{ uid }, { email }]
     });
 
     if (existingUser) {
@@ -476,25 +472,16 @@ const studentSignup = async (req, res) => {
       });
     }
 
-    // Check if this email is registered as an employer
-    const existingEmployer = await TeamMember.findOne({ email: email });
-    if (existingEmployer) {
-      return res.status(400).json({
-        success: false,
-        message: 'This email is already registered as an employer. Please use the employer sign-in.',
-      });
-    }
-
-    // Create new user
+    // Create new student user in MongoDB
     const user = await User.create({
-      uid: uid,
-      email: email,
+      uid,
+      email,
       name: name || decodedToken.name || email.split('@')[0],
       authProvider: 'google',
       profilePicture: picture,
       emailVerified: email_verified || false,
       role: 'user',
-      university: university || '',
+      university: university || email.split('@')[1]?.split('.')[0]?.toUpperCase(),
       lastLoginAt: new Date(),
     });
 
@@ -512,29 +499,18 @@ const studentSignup = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    const userResponse = user.toJSON();
-
     res.status(201).json({
       success: true,
       message: 'Student account created successfully',
       data: {
-        user: userResponse,
+        user: user.toJSON(),
         token: appToken,
-        firebaseToken: idToken,
         role: 'user',
         userType: 'student',
       },
     });
   } catch (error) {
     console.error('Student signup error:', error);
-
-    if (error.code === 'auth/id-token-expired') {
-      return res.status(401).json({
-        success: false,
-        message: 'Firebase token has expired',
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Student signup failed',
@@ -544,41 +520,25 @@ const studentSignup = async (req, res) => {
 };
 
 /**
- * @desc    Employer/Team Member signup with Firebase (creates company + team member)
+ * @desc    Employer signup with Firebase ID token
  * @route   POST /api/auth/employer/signup
  * @access  Public
  */
 const employerSignup = async (req, res) => {
   try {
-    // Check if Firebase Admin SDK is initialized
     if (!admin.apps.length) {
       return res.status(500).json({
         success: false,
-        message: 'Firebase Admin SDK is not initialized. Please configure FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_PROJECT_ID',
+        message: 'Firebase Admin SDK is not initialized',
       });
     }
 
-    const {
-      idToken,
-      firstName,
-      lastName,
-      companyName,
-      companyWebsite,
-      industry,
-      title
-    } = req.body;
+    const { idToken, companyName, companyWebsite, industry, firstName, lastName } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
         success: false,
         message: 'Firebase ID token is required',
-      });
-    }
-
-    if (!firstName || !lastName) {
-      return res.status(400).json({
-        success: false,
-        message: 'First name and last name are required',
       });
     }
 
@@ -600,58 +560,39 @@ const employerSignup = async (req, res) => {
       });
     }
 
-    // Check if employer already exists
-    const existingEmployer = await TeamMember.findOne({
-      $or: [
-        { uid: uid },
-        { email: email }
-      ]
+    // Check if team member already exists
+    const existingMember = await TeamMember.findOne({
+      $or: [{ uid }, { email }]
     });
 
-    if (existingEmployer) {
+    if (existingMember) {
       return res.status(400).json({
         success: false,
-        message: 'Employer already exists. Please sign in instead.',
+        message: 'Employer account already exists. Please sign in instead.',
       });
     }
 
-    // Check if this email is registered as a student
-    const existingStudent = await User.findOne({ email: email });
-    if (existingStudent) {
-      return res.status(400).json({
-        success: false,
-        message: 'This email is already registered as a student. Please use the student sign-in.',
-      });
-    }
-
-    // Create company
+    // Create company in MongoDB
     const company = await Company.create({
       companyId: `comp_${Date.now()}`,
-      companyName: companyName,
+      companyName,
       companyWebsite: companyWebsite || '',
       industry: industry || '',
-      onboardingCompleted: false,
-      setupMethod: 'manual',
     });
 
-    // Create team member as company admin
+    // Create team member (employer admin) in MongoDB
     const teamMember = await TeamMember.create({
+      uid,
+      email,
+      firstName: firstName || decodedToken.name?.split(' ')[0] || email.split('@')[0],
+      lastName: lastName || decodedToken.name?.split(' ').slice(1).join(' ') || '',
       companyId: company._id,
-      uid: uid,
-      email: email,
+      companyRole: 'admin',
       authProvider: 'google',
-      firstName: firstName,
-      lastName: lastName,
-      title: title || 'Admin',
       profilePhoto: picture ? { fileUrl: picture } : undefined,
       emailVerified: email_verified || false,
-      companyRole: 'admin', // First user is always admin
-      status: 'active',
       lastLoginAt: new Date(),
     });
-
-    // Populate company data
-    await teamMember.populate('companyId');
 
     // Generate JWT token
     const appToken = jwt.sign(
@@ -672,17 +613,15 @@ const employerSignup = async (req, res) => {
 
     const memberResponse = teamMember.toJSON();
     memberResponse.role = 'employer';
-    memberResponse.userType = 'employer';
     memberResponse.isEmployerAdmin = true;
 
     res.status(201).json({
       success: true,
-      message: 'Employer account and company created successfully',
+      message: 'Employer account created successfully',
       data: {
         user: memberResponse,
-        company: company,
+        company: company.toJSON(),
         token: appToken,
-        firebaseToken: idToken,
         role: 'employer',
         userType: 'employer',
         companyRole: 'admin',
@@ -691,14 +630,6 @@ const employerSignup = async (req, res) => {
     });
   } catch (error) {
     console.error('Employer signup error:', error);
-
-    if (error.code === 'auth/id-token-expired') {
-      return res.status(401).json({
-        success: false,
-        message: 'Firebase token has expired',
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: 'Employer signup failed',

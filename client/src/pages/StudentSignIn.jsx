@@ -5,33 +5,106 @@ import { ArrowRight, Mail, Lock, User } from "lucide-react";
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { API_URL } from "@/config";
+import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
 
 export default function StudentSignIn() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      console.log("Student sign in:", { email, password });
-      navigate("/StudentDashboard");
-    }, 1000);
+    try {
+      // Step 1: Sign in with Firebase and get ID token
+      const idToken = await signInWithEmail(email.toLowerCase().trim(), password);
+
+      // Step 2: Send ID token to backend
+      const response = await fetch(`${API_URL}/api/auth/student/signin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Store the JWT token
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+
+        // Navigate to dashboard
+        navigate("/StudentDashboard");
+      }
+    } catch (error) {
+      console.error("Sign in error:", error);
+      if (error.code === 'auth/invalid-credential') {
+        setError("Incorrect email address or password. Please try again.");
+      } else if (error.code === 'auth/user-disabled') {
+        setError("This account has been disabled.");
+      } else if (error.code === 'auth/too-many-requests') {
+        setError("Too many attempts. Please try again later.")
+      }
+      else {
+        setError(error.code);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    console.log("Google sign in: student");
-    alert("Google sign-in would be triggered here");
-    setTimeout(() => {
-      navigate("/StudentDashboard");
-    }, 500);
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      // Step 1: Sign in with Google and get ID token
+      const idToken = await signInWithGoogle();
+
+      // Step 2: Send ID token to backend
+      const response = await fetch(`${API_URL}/api/auth/student/signin`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ idToken }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Store the JWT token
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+
+        // Navigate to dashboard
+        navigate("/StudentDashboard");
+      } else {
+        setError(data.message || "Google sign-in failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Google sign in error:", error);
+      if (error.code === 'auth/popup-closed-by-user') {
+        setError("Sign-in cancelled. Please try again.");
+      } else if (error.code === 'auth/popup-blocked') {
+        setError("Pop-up blocked. Please allow pop-ups for this site.");
+      } else {
+        setError("Google sign-in failed. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const canSubmit = email && password;
@@ -135,6 +208,12 @@ export default function StudentSignIn() {
                   </button>
                 </div>
               </div>
+
+              {error && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+                  <p className="text-sm text-red-600 font-medium">{error}</p>
+                </div>
+              )}
 
               <Button
                 type="submit"
