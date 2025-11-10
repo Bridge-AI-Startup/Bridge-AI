@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
   firebaseSignIn,
+  studentSignIn,
+  employerSignIn,
   verifyFirebaseToken,
   getCurrentUser,
   linkFirebaseAccount,
@@ -24,14 +26,14 @@ const authMiddleware = require('../middleware/auth');
 // ==================== STUDENT/USER AUTH ====================
 // Public routes - No authentication required
 router.post('/student/signup', studentSignup); // Create new student account
-router.post('/student/signin', firebaseSignIn); // Sign in existing student
-router.post('/student/firebase/signin', firebaseSignIn); // Alias for compatibility
+router.post('/student/signin', studentSignIn); // Sign in existing student (enforces student-only)
+router.post('/student/firebase/signin', studentSignIn); // Alias for compatibility
 
 // ==================== EMPLOYER/TEAM MEMBER AUTH ====================
 // Public routes - No authentication required
 router.post('/employer/signup', employerSignup); // Create new employer account + company
-router.post('/employer/signin', firebaseSignIn); // Sign in existing employer
-router.post('/employer/firebase/signin', firebaseSignIn); // Alias for compatibility
+router.post('/employer/signin', employerSignIn); // Sign in existing employer (enforces employer-only)
+router.post('/employer/firebase/signin', employerSignIn); // Alias for compatibility
 
 // ==================== SHARED AUTH ROUTES ====================
 // These work for both user types

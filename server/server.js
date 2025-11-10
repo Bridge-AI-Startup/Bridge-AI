@@ -38,6 +38,7 @@ app.post('/api/companies', async (req, res) => {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/waitlist', require('./routes/waitlistRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {

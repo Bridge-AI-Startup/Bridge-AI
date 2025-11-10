@@ -1,61 +1,201 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Mail, Lock, User } from "lucide-react";
+import { ArrowRight, Mail, Lock, User, Building2, Globe, Briefcase } from "lucide-react";
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { API_URL } from "@/config";
+import { signUpWithEmail, signUpWithGoogle, deleteFirebaseUser } from "@/lib/auth";
 
 export default function EmployerSignup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite");
-  const companyName = searchParams.get("company");
+  const companyNameParam = searchParams.get("company");
   const invitedEmail = searchParams.get("email");
-  
-  const [fullName, setFullName] = useState("");
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [workEmail, setWorkEmail] = useState(invitedEmail || "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [companyName, setCompanyName] = useState(companyNameParam || "");
+  const [companyWebsite, setCompanyWebsite] = useState("");
+  const [industry, setIndustry] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    
+    setError("");
+
     if (password !== confirmPassword) {
-      alert("Passwords don't match");
+      setError("Passwords don't match");
+      return;
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters");
+      return;
+    }
+
+    if (!inviteToken && !companyName) {
+      setError("Company name is required");
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      console.log("Employer signup:", { fullName, workEmail, inviteToken });
-      
-      if (inviteToken) {
-        navigate("/EmployerDashboard");
+
+    let firebaseUser = null;
+    try {
+      // Step 1: Create Firebase user and get ID token
+      const { idToken, user } = await signUpWithEmail(workEmail.toLowerCase().trim(), password);
+      firebaseUser = user;
+
+      // Step 2: Send ID token to backend
+      const response = await fetch(`${API_URL}/api/auth/employer/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idToken,
+          firstName,
+          lastName,
+          companyName,
+          companyWebsite,
+          industry,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Store the JWT token
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+        if (data.data.company) {
+          localStorage.setItem('company', JSON.stringify(data.data.company));
+        }
+
+        // Navigate based on invite status
+        if (inviteToken) {
+          navigate("/EmployerDashboard");
+        } else {
+          navigate("/EmployerOnboarding?first=true");
+        }
       } else {
-        navigate("/EmployerOnboarding?first=true");
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
+        setError(data.message || "Signup failed. Please try again.");
       }
-    }, 1000);
+    } catch (error) {
+      console.error("Signup error:", error);
+
+      // If we created a Firebase user but backend failed, clean it up
+      if (firebaseUser && !error.code?.startsWith('auth/')) {
+        await deleteFirebaseUser(firebaseUser);
+      }
+
+      if (error.code === 'auth/email-already-in-use') {
+        setError("This email is already registered. Please sign in instead.");
+      } else if (error.code === 'auth/invalid-email') {
+        setError("Invalid email address.");
+      } else if (error.code === 'auth/weak-password') {
+        setError("Password is too weak. Please use a stronger password.");
+      } else {
+        setError(error.message || "Signup failed. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleGoogleSignup = () => {
-    console.log("Google signup: employer", { inviteToken });
-    alert("Google sign-up would be triggered here. After authentication, you'd proceed based on invite status.");
-    setTimeout(() => {
-      if (inviteToken) {
-        navigate("/EmployerDashboard");
+  const handleGoogleSignup = async () => {
+    setError("");
+
+    // Validate required fields before Google signup
+    if (!inviteToken && !companyName) {
+      setError("Please enter your company name before signing up with Google.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    let firebaseUser = null;
+    try {
+      // Step 1: Sign in with Google and get ID token
+      const { idToken, user } = await signUpWithGoogle();
+      firebaseUser = user;
+
+      // Step 2: Send ID token to backend
+      const response = await fetch(`${API_URL}/api/auth/employer/signup`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idToken,
+          firstName,
+          lastName,
+          companyName,
+          companyWebsite,
+          industry,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Store the JWT token
+        localStorage.setItem('token', data.data.token);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+        if (data.data.company) {
+          localStorage.setItem('company', JSON.stringify(data.data.company));
+        }
+
+        // Navigate based on invite status
+        if (inviteToken) {
+          navigate("/EmployerDashboard");
+        } else {
+          navigate("/EmployerOnboarding?first=true");
+        }
       } else {
-        navigate("/EmployerOnboarding?first=true");
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
+        setError(data.message || "Google sign-up failed. Please try again.");
       }
-    }, 500);
+    } catch (error) {
+      console.error("Google signup error:", error);
+
+      // If we created a Firebase user but backend failed, clean it up
+      if (firebaseUser && !error.code?.startsWith('auth/')) {
+        await deleteFirebaseUser(firebaseUser);
+      }
+
+      if (error.code === 'auth/popup-closed-by-user') {
+        setError("Sign-up cancelled. Please try again.");
+      } else if (error.code === 'auth/popup-blocked') {
+        setError("Pop-up blocked. Please allow pop-ups for this site.");
+      } else {
+        setError(error.message || "Google sign-up failed. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const canSubmit = fullName && workEmail && password && confirmPassword && password === confirmPassword;
+  const canSubmit = firstName && workEmail && password && confirmPassword &&
+                    password === confirmPassword && (!inviteToken ? companyName : true);
 
   return (
     <div className="min-h-screen bg-white">
@@ -120,18 +260,31 @@ export default function EmployerSignup() {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-[#0B1121] mb-2">
-                <User className="w-4 h-4 inline mr-1" />
-                Full Name *
-              </label>
-              <Input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Sarah Chen"
-                className="h-12 rounded-xl"
-                required
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-[#0B1121] mb-2">
+                  <User className="w-4 h-4 inline mr-1" />
+                  First Name *
+                </label>
+                <Input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Sarah"
+                  className="h-12 rounded-xl"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-[#0B1121] mb-2">
+                  Last Name
+                </label>
+                <Input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Chen"
+                  className="h-12 rounded-xl"
+                />
+              </div>
             </div>
 
             <div>
@@ -154,6 +307,51 @@ export default function EmployerSignup() {
                 </p>
               )}
             </div>
+
+            {!inviteToken && (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-[#0B1121] mb-2">
+                    <Building2 className="w-4 h-4 inline mr-1" />
+                    Company Name *
+                  </label>
+                  <Input
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Acme Inc."
+                    className="h-12 rounded-xl"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-[#0B1121] mb-2">
+                    <Globe className="w-4 h-4 inline mr-1" />
+                    Company Website
+                  </label>
+                  <Input
+                    type="url"
+                    value={companyWebsite}
+                    onChange={(e) => setCompanyWebsite(e.target.value)}
+                    placeholder="https://www.company.com"
+                    className="h-12 rounded-xl"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-[#0B1121] mb-2">
+                    <Briefcase className="w-4 h-4 inline mr-1" />
+                    Industry
+                  </label>
+                  <Input
+                    value={industry}
+                    onChange={(e) => setIndustry(e.target.value)}
+                    placeholder="Technology, Finance, etc."
+                    className="h-12 rounded-xl"
+                  />
+                </div>
+              </>
+            )}
 
             <div>
               <label className="block text-sm font-semibold text-[#0B1121] mb-2">
@@ -184,6 +382,12 @@ export default function EmployerSignup() {
                 required
               />
             </div>
+
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200">
+                <p className="text-sm text-red-600 font-medium">{error}</p>
+              </div>
+            )}
 
             <Button
               type="submit"
