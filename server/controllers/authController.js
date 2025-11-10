@@ -5,7 +5,233 @@ const admin = require('../config/firebase');
 const jwt = require('jsonwebtoken');
 
 /**
- * @desc    Verify Firebase ID token and create/update user
+ * @desc    Student sign in with Firebase ID token
+ * @route   POST /api/auth/student/signin
+ * @access  Public
+ */
+const studentSignIn = async (req, res) => {
+  try {
+    if (!admin.apps.length) {
+      return res.status(500).json({
+        success: false,
+        message: 'Firebase Admin SDK is not initialized',
+      });
+    }
+
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Firebase ID token is required',
+      });
+    }
+
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture, email_verified } = decodedToken;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required in Firebase token',
+      });
+    }
+
+    // Check if user exists as a student
+    let user = await User.findOne({
+      $or: [{ uid }, { email }]
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Student account not found. Please sign up first.',
+      });
+    }
+
+    // Update user with latest Firebase information
+    user.uid = uid;
+    user.email = email;
+    user.name = name || user.name;
+    user.profilePicture = picture || user.profilePicture;
+    user.emailVerified = email_verified || user.emailVerified;
+    user.authProvider = 'google';
+    user.lastLoginAt = new Date();
+
+    await user.save();
+
+    // Generate JWT token
+    const appToken = jwt.sign(
+      {
+        userId: user._id,
+        uid: user.uid,
+        email: user.email,
+        role: 'user',
+        userType: 'student',
+        authProvider: 'google',
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Student sign-in successful',
+      data: {
+        user: user.toJSON(),
+        token: appToken,
+        role: 'user',
+        userType: 'student',
+      },
+    });
+  } catch (error) {
+    console.error('Student sign-in error:', error);
+
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({
+        success: false,
+        message: 'Firebase token has expired',
+      });
+    }
+
+    if (error.code === 'auth/id-token-revoked') {
+      return res.status(401).json({
+        success: false,
+        message: 'Firebase token has been revoked',
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Student sign-in failed',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Employer sign in with Firebase ID token
+ * @route   POST /api/auth/employer/signin
+ * @access  Public
+ */
+const employerSignIn = async (req, res) => {
+  try {
+    if (!admin.apps.length) {
+      return res.status(500).json({
+        success: false,
+        message: 'Firebase Admin SDK is not initialized',
+      });
+    }
+
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Firebase ID token is required',
+      });
+    }
+
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name, picture, email_verified } = decodedToken;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required in Firebase token',
+      });
+    }
+
+    // Check if user exists as an employer
+    let teamMember = await TeamMember.findOne({
+      $or: [{ uid }, { email }]
+    }).populate('companyId');
+
+    if (!teamMember) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employer account not found. Please sign up first.',
+      });
+    }
+
+    // Update team member with latest Firebase information
+    teamMember.uid = uid;
+    teamMember.email = email;
+    teamMember.firstName = name?.split(' ')[0] || teamMember.firstName;
+    teamMember.lastName = name?.split(' ').slice(1).join(' ') || teamMember.lastName;
+    if (picture) teamMember.profilePhoto = { fileUrl: picture };
+    teamMember.emailVerified = email_verified || teamMember.emailVerified;
+    teamMember.authProvider = 'google';
+    teamMember.lastLoginAt = new Date();
+
+    await teamMember.save();
+
+    const applicationRole = 'employer';
+    const isEmployerAdmin = teamMember.companyRole === 'admin';
+
+    // Generate JWT token
+    const appToken = jwt.sign(
+      {
+        userId: teamMember._id,
+        uid: teamMember.uid,
+        email: teamMember.email,
+        role: applicationRole,
+        userType: 'employer',
+        companyId: teamMember.companyId?._id || teamMember.companyId,
+        companyRole: teamMember.companyRole,
+        isEmployerAdmin: isEmployerAdmin,
+        authProvider: 'google',
+      },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    const memberResponse = teamMember.toJSON();
+    memberResponse.role = applicationRole;
+    memberResponse.isEmployerAdmin = isEmployerAdmin;
+
+    res.status(200).json({
+      success: true,
+      message: 'Employer sign-in successful',
+      data: {
+        user: memberResponse,
+        company: teamMember.companyId,
+        token: appToken,
+        role: applicationRole,
+        userType: 'employer',
+        companyRole: teamMember.companyRole,
+        isEmployerAdmin: isEmployerAdmin,
+      },
+    });
+  } catch (error) {
+    console.error('Employer sign-in error:', error);
+
+    if (error.code === 'auth/id-token-expired') {
+      return res.status(401).json({
+        success: false,
+        message: 'Firebase token has expired',
+      });
+    }
+
+    if (error.code === 'auth/id-token-revoked') {
+      return res.status(401).json({
+        success: false,
+        message: 'Firebase token has been revoked',
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Employer sign-in failed',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc    Verify Firebase ID token and create/update user (DEPRECATED - use specific signin endpoints)
  * @route   POST /api/auth/firebase/signin
  * @access  Public
  */
@@ -40,7 +266,7 @@ const firebaseSignIn = async (req, res) => {
     }
 
     // Check if user exists as TeamMember (employer) first
-    let teamMember = await TeamMember.findOne({ 
+    let teamMember = await TeamMember.findOne({
       $or: [
         { uid: uid },
         { email: email }
@@ -57,7 +283,7 @@ const firebaseSignIn = async (req, res) => {
       teamMember.emailVerified = email_verified || teamMember.emailVerified;
       teamMember.authProvider = 'google';
       teamMember.lastLoginAt = new Date();
-      
+
       await teamMember.save();
 
       // All team members are employers at application level
@@ -102,7 +328,7 @@ const firebaseSignIn = async (req, res) => {
     }
 
     // Check if user exists as User (student/candidate)
-    let user = await User.findOne({ 
+    let user = await User.findOne({
       $or: [
         { uid: uid },
         { email: email }
@@ -118,7 +344,7 @@ const firebaseSignIn = async (req, res) => {
       user.emailVerified = email_verified || user.emailVerified;
       user.authProvider = 'google';
       user.lastLoginAt = new Date();
-      
+
       await user.save();
     } else {
       // Create new user (defaults to 'user' role - student/candidate)
@@ -164,21 +390,21 @@ const firebaseSignIn = async (req, res) => {
     });
   } catch (error) {
     console.error('Firebase sign-in error:', error);
-    
+
     if (error.code === 'auth/id-token-expired') {
       return res.status(401).json({
         success: false,
         message: 'Firebase token has expired',
       });
     }
-    
+
     if (error.code === 'auth/id-token-revoked') {
       return res.status(401).json({
         success: false,
         message: 'Firebase token has been revoked',
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Firebase authentication failed',
@@ -460,7 +686,7 @@ const studentSignup = async (req, res) => {
       });
     }
 
-    // Check if user already exists
+    // Check if user already exists as a student
     const existingUser = await User.findOne({
       $or: [{ uid }, { email }]
     });
@@ -469,6 +695,18 @@ const studentSignup = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'User already exists. Please sign in instead.',
+      });
+    }
+
+    // Check if user already has an employer account
+    const existingEmployer = await TeamMember.findOne({
+      $or: [{ uid }, { email }]
+    });
+
+    if (existingEmployer) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already registered as an employer account. Please use a different email or sign in to your employer account.',
       });
     }
 
@@ -560,7 +798,7 @@ const employerSignup = async (req, res) => {
       });
     }
 
-    // Check if team member already exists
+    // Check if team member already exists as an employer
     const existingMember = await TeamMember.findOne({
       $or: [{ uid }, { email }]
     });
@@ -569,6 +807,18 @@ const employerSignup = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Employer account already exists. Please sign in instead.',
+      });
+    }
+
+    // Check if user already has a student account
+    const existingStudent = await User.findOne({
+      $or: [{ uid }, { email }]
+    });
+
+    if (existingStudent) {
+      return res.status(400).json({
+        success: false,
+        message: 'This email is already registered as a student account. Please use a different email or sign in to your student account.',
       });
     }
 
@@ -640,6 +890,8 @@ const employerSignup = async (req, res) => {
 
 module.exports = {
   firebaseSignIn,
+  studentSignIn,
+  employerSignIn,
   verifyFirebaseToken,
   getCurrentUser,
   linkFirebaseAccount,

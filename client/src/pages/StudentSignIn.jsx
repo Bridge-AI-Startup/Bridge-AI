@@ -46,6 +46,8 @@ export default function StudentSignIn() {
 
         // Navigate to dashboard
         navigate("/StudentDashboard");
+      } else {
+        setError(data.message || "Sign-in failed. Please try again.");
       }
     } catch (error) {
       console.error("Sign in error:", error);
@@ -54,10 +56,9 @@ export default function StudentSignIn() {
       } else if (error.code === 'auth/user-disabled') {
         setError("This account has been disabled.");
       } else if (error.code === 'auth/too-many-requests') {
-        setError("Too many attempts. Please try again later.")
-      }
-      else {
-        setError(error.code);
+        setError("Too many attempts. Please try again later.");
+      } else {
+        setError(error.message || "Sign-in failed. Please try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -100,7 +101,7 @@ export default function StudentSignIn() {
       } else if (error.code === 'auth/popup-blocked') {
         setError("Pop-up blocked. Please allow pop-ups for this site.");
       } else {
-        setError("Google sign-in failed. Please try again.");
+        setError(error.message || "Google sign-in failed. Please try again.");
       }
     } finally {
       setIsSubmitting(false);
