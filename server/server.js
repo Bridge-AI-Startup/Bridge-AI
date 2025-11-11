@@ -14,6 +14,9 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
+
 // Routes
 app.get('/', (req, res) => {
   res.json({ message: 'Hiring Platform API' });
@@ -38,6 +41,8 @@ app.post('/api/companies', async (req, res) => {
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/waitlist', require('./routes/waitlistRoutes'));
+app.use('/api/onboarding', require('./routes/onboardingRoutes'));
+app.use('/api/employer-onboarding', require('./routes/employerOnboardingRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Error handling middleware

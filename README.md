@@ -472,6 +472,76 @@ Contributions are welcome! Please follow these steps:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### Coding Standards
+
+#### API Configuration
+
+**Always use the centralized API_URL:**
+
+```javascript
+import { API_URL } from "@/config";
+
+// ✅ Correct
+const response = await fetch(`${API_URL}/api/users`, options);
+
+// ❌ Wrong - never hardcode URLs or ports
+const response = await fetch('http://localhost:5000/api/users', options);
+```
+
+**Why?**
+- Port may vary by environment (not always 5000)
+- API_URL is configured per environment (dev/staging/production)
+- Ensures consistency across the codebase
+
+#### HTTP Client
+
+**Use native `fetch()` API, not axios:**
+
+```javascript
+// ✅ Correct - Use fetch
+const response = await fetch(`${API_URL}/api/endpoint`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify(data),
+});
+
+const result = await response.json();
+
+if (!response.ok) {
+  throw new Error(result.message || "Request failed");
+}
+
+// ❌ Wrong - Don't use axios
+const response = await axios.post(url, data);
+```
+
+**File uploads with FormData:**
+
+```javascript
+const formData = new FormData();
+formData.append('field', value);
+formData.append('file', fileObject);
+
+const response = await fetch(`${API_URL}/api/upload`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`,
+    // Don't set Content-Type - browser sets it with multipart boundary
+  },
+  body: formData,
+});
+```
+
+#### Backend Architecture
+
+- **Controllers** (`server/controllers/`): Handle business logic for routes
+- **Routes** (`server/routes/`): Define API endpoints with middleware
+- **Services** (`server/services/`): Reusable business logic (storage, email, etc.)
+- **Direct backend calls**: Don't create client API wrappers (except legacy `userAPI`)
+
 ### Development Guidelines
 
 - Follow existing code style and conventions
@@ -479,6 +549,8 @@ Contributions are welcome! Please follow these steps:
 - Test authentication flows thoroughly
 - Ensure Firebase user cleanup works correctly
 - Update README if adding new features or endpoints
+- Use `fetch()` instead of `axios` for HTTP requests
+- Import `API_URL` from `@/config` instead of hardcoding URLs
 
 ---
 

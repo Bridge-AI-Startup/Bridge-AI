@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
-export default function ProjectsActions({ hasProjects, onSave, onBack }) {
+export default function ProjectsActions({ hasProjects, isSaving, onSave, onBack }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -21,14 +21,14 @@ export default function ProjectsActions({ hasProjects, onSave, onBack }) {
 
       <Button
         onClick={onSave}
-        disabled={!hasProjects}
+        disabled={isSaving}
         className="h-14 px-10 text-lg font-medium rounded-2xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        style={{ 
-          backgroundColor: hasProjects ? '#FFFF00' : '#E5E5E5',
-          color: hasProjects ? '#1E3A8A' : '#9CA3AF'
+        style={{
+          backgroundColor: '#FFFF00',
+          color: '#1E3A8A'
         }}
       >
-        Continue
+        {isSaving ? 'Saving...' : hasProjects ? 'Save & Continue' : 'Skip & Continue'}
       </Button>
     </motion.div>
   );

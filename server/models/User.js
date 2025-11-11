@@ -64,20 +64,24 @@ const userSchema = new mongoose.Schema({
   
   // Job Preferences
   jobPreferences: {
-    companyStage: {
+    companyStages: [{
       type: String,
-      enum: ['early_stage', 'growing', 'established', 'no_preference']
-    },
+      enum: ['early', 'growing', 'established', 'no-preference']
+    }],
     industries: [String],
-    workStyle: {
+    workStyles: [{
       type: String,
-      enum: ['in_person', 'hybrid', 'remote', 'no_preference']
-    },
+      enum: ['in-person', 'hybrid', 'remote', 'no-preference']
+    }],
     teamType: {
       type: String,
       enum: ['engineering_heavy', 'product_design', 'growth_business', 'no_preference']
     },
-    companyValues: [String]
+    companyValues: [String],
+    needsVisa: {
+      type: Boolean,
+      default: null
+    }
   },
   
   // Role - 'user' = student/candidate

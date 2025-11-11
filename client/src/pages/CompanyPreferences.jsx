@@ -10,33 +10,90 @@ import VideoSection from "../components/preferences/VideoSection";
 import PreferencesActions from "../components/preferences/PreferencesActions";
 import { useToast } from "@/components/ui/use-toast";
 import { motion } from "framer-motion";
+import { API_URL } from "@/config";
 
 export default function CompanyPreferences() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const [preferences, setPreferences] = useState({
-    companyStage: "",
+    companyStages: [],
     industries: [],
-    workStyle: "",
+    workStyles: [],
     videoRecorded: false,
     needsVisa: null
   });
 
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
     window.scrollTo(0, 0);
+    loadPreferences();
   }, []);
+
+  const loadPreferences = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/api/onboarding/status`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (data.success && data.data.user && data.data.user.jobPreferences) {
+        const prefs = data.data.user.jobPreferences;
+        setPreferences({
+          companyStages: prefs.companyStages || [],
+          industries: prefs.industries || [],
+          workStyles: prefs.workStyles || [],
+          videoRecorded: false,
+          needsVisa: prefs.needsVisa !== undefined ? prefs.needsVisa : null
+        });
+      }
+    } catch (error) {
+      console.error('Error loading preferences:', error);
+    }
+  };
 
   const hasAllSelections = () => {
     return (
-      preferences.companyStage &&
+      preferences.companyStages.length > 0 &&
       preferences.industries.length > 0 &&
-      preferences.workStyle &&
+      preferences.workStyles.length > 0 &&
       preferences.needsVisa !== null
     );
   };
 
-  const handleSave = () => {
+  const handleCompanyStageToggle = (value, clearOthers = false) => {
+    if (clearOthers) {
+      // If "no-preference" clicked when nothing selected, set only it
+      setPreferences({...preferences, companyStages: [value]});
+    } else {
+      // Toggle the value
+      const newStages = preferences.companyStages.includes(value)
+        ? preferences.companyStages.filter(s => s !== value)
+        : [...preferences.companyStages, value];
+      setPreferences({...preferences, companyStages: newStages});
+    }
+  };
+
+  const handleWorkStyleToggle = (value, clearOthers = false) => {
+    if (clearOthers) {
+      // If "no-preference" clicked when nothing selected, set only it
+      setPreferences({...preferences, workStyles: [value]});
+    } else {
+      // Toggle the value
+      const newStyles = preferences.workStyles.includes(value)
+        ? preferences.workStyles.filter(s => s !== value)
+        : [...preferences.workStyles, value];
+      setPreferences({...preferences, workStyles: newStyles});
+    }
+  };
+
+  const handleSave = async () => {
     if (!hasAllSelections()) {
       toast({
         title: "Incomplete preferences",
@@ -46,9 +103,54 @@ export default function CompanyPreferences() {
       return;
     }
 
-    setTimeout(() => {
-      navigate("/PreferencesParse");
-    }, 100);
+    setIsSaving(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/StudentSignIn');
+        return;
+      }
+
+      const response = await fetch(`${API_URL}/api/onboarding/preferences`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          companyStages: preferences.companyStages,
+          industries: preferences.industries,
+          workStyles: preferences.workStyles,
+          needsVisa: preferences.needsVisa
+        })
+      });
+
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Failed to save preferences');
+      }
+
+      toast({
+        title: "Preferences saved",
+        description: "Your company preferences have been saved successfully.",
+      });
+
+      setIsSaving(false);
+
+      setTimeout(() => {
+        navigate("/PreferencesParse");
+      }, 500);
+    } catch (error) {
+      console.error('Preferences save error:', error);
+      setIsSaving(false);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to save preferences',
+        variant: "destructive"
+      });
+    }
   };
 
   const handleBack = () => {
@@ -58,15 +160,15 @@ export default function CompanyPreferences() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header currentPage="Preferences" />
-      
+
       <div className="pt-24 pb-32 px-6">
         <div className="max-w-4xl mx-auto">
           <PreferencesHeader />
 
           <div className="space-y-8">
             <CompanyStageSection
-              selected={preferences.companyStage}
-              onSelect={(value) => setPreferences({...preferences, companyStage: value})}
+              selected={preferences.companyStages}
+              onToggle={handleCompanyStageToggle}
               accentColor="#1E3A8A"
             />
 
@@ -82,8 +184,8 @@ export default function CompanyPreferences() {
             />
 
             <WorkStyleSection
-              selected={preferences.workStyle}
-              onSelect={(value) => setPreferences({...preferences, workStyle: value})}
+              selected={preferences.workStyles}
+              onToggle={handleWorkStyleToggle}
               accentColor="#1E3A8A"
             />
 
@@ -129,6 +231,7 @@ export default function CompanyPreferences() {
 
           <PreferencesActions
             hasSelection={hasAllSelections()}
+            isSaving={isSaving}
             onSave={handleSave}
             onBack={handleBack}
           />

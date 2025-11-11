@@ -7,6 +7,7 @@ import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { API_URL } from "@/config";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Command,
@@ -21,19 +22,21 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { base44 } from "@/api/base44Client";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function EmployerOnboarding() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isEditMode = searchParams.get("edit") === "true";
   const skipChoice = searchParams.get("manual") === "true";
-  
+  const { toast } = useToast();
+
   // AI generation state
   const [useAI, setUseAI] = useState(!isEditMode);
   const [aiCompanyName, setAiCompanyName] = useState("");
   const [aiWebsite, setAiWebsite] = useState("");
   const [isGeneratingProfile, setIsGeneratingProfile] = useState(false);
-  
+
   // Form state
   const [companyName, setCompanyName] = useState(isEditMode ? "Acme Robotics" : "");
   const [pitch, setPitch] = useState(isEditMode ? "Revolutionizing warehouse logistics with autonomous robotics." : "");
@@ -47,11 +50,12 @@ export default function EmployerOnboarding() {
   const [fundingStage, setFundingStage] = useState(isEditMode ? "series-a" : "");
   const [foundedYear, setFoundedYear] = useState(isEditMode ? "2020" : "");
   const [logoUrl, setLogoUrl] = useState(null);
-  
+  const [logoFile, setLogoFile] = useState(null); // Store the actual file object for upload
+
   // Team members state
   const [teamMembers, setTeamMembers] = useState([]);
   const [newMemberEmail, setNewMemberEmail] = useState("");
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(isEditMode || skipChoice);
   const [industryOpen, setIndustryOpen] = useState(false);
@@ -96,6 +100,7 @@ export default function EmployerOnboarding() {
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
+      setLogoFile(file); // Store the file for upload
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoUrl(reader.result);
@@ -105,6 +110,7 @@ export default function EmployerOnboarding() {
   };
 
   const generateFullProfile = async () => {
+
     if (!aiCompanyName || !aiWebsite) {
       alert("Please enter both company name and website.");
       return;
@@ -112,55 +118,97 @@ export default function EmployerOnboarding() {
 
     setIsGeneratingProfile(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `You are helping to create a company profile for internship recruiting. Given the company name and website, research and generate a complete company profile.
+      
+      const formData2 = new FormData();
+      const token = localStorage.getItem('token');
 
-Company Name: ${aiCompanyName}
-Website: ${aiWebsite}
-
-Generate a comprehensive JSON object with the following fields:
-- pitch: 1 sentence elevator pitch of what the company does
-- description: 2-3 sentence compelling description of what the company does
-- headquarters: City, State/Country where they're based
-- companySize: Choose from "1-10", "11-50", "51-200", "201-500", "501+"
-- industry: Choose from "technology", "fintech", "healthcare", "ecommerce", "biotech", "edtech", "ai-ml", "robotics", "saas", "consumer", "climate", "other"
-- fundingStage: Choose from "bootstrapped", "pre-seed", "seed", "series-a", "series-b", "series-c+", "public"
-- foundedYear: Year as a string (e.g. "2020")
-
-Return ONLY the JSON object with these exact keys.`,
-        add_context_from_internet: true,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            pitch: { type: "string" },
-            description: { type: "string" },
-            headquarters: { type: "string" },
-            companySize: { type: "string" },
-            industry: { type: "string" },
-            fundingStage: { type: "string" },
-            foundedYear: { type: "string" }
-          },
-          required: ["pitch", "description", "headquarters", "companySize", "industry"]
-        }
+      const result = await fetch(`${API_URL}/api/employer-onboarding/generate-company-profile`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({companyName:aiCompanyName,website:aiWebsite}),
       });
+//       const result2 = await base44.integrations.Core.InvokeLLM({
+//         prompt: `You are helping to create a company profile for internship recruiting. Given the company name and website, research and generate a complete company profile.
 
-      if (result) {
+// Company Name: ${aiCompanyName}
+// Website: ${aiWebsite}
+
+// Generate a comprehensive JSON object with the following fields:
+// - pitch: 1 sentence elevator pitch of what the company does
+// - description: 2-3 sentence compelling description of what the company does
+// - headquarters: City, State/Country where they're based
+// - companySize: Choose from "1-10", "11-50", "51-200", "201-500", "501+"
+// - industry: Choose from "technology", "fintech", "healthcare", "ecommerce", "biotech", "edtech", "ai-ml", "robotics", "saas", "consumer", "climate", "other"
+// - fundingStage: Choose from "bootstrapped", "pre-seed", "seed", "series-a", "series-b", "series-c+", "public"
+// - foundedYear: Year as a string (e.g. "2020")
+
+// Return ONLY the JSON object with these exact keys.`,
+//         add_context_from_internet: true,
+//         response_json_schema: {
+//           type: "object",
+//           properties: {
+//             pitch: { type: "string" },
+//             description: { type: "string" },
+//             headquarters: { type: "string" },
+//             companySize: { type: "string" },
+//             industry: { type: "string" },
+//             fundingStage: { type: "string" },
+//             foundedYear: { type: "string" }
+//           },
+//           required: ["pitch", "description", "headquarters", "companySize", "industry"]
+//         }
+//       });
+
+      const data = await result.json();
+
+      if (!result.ok) {
+        throw new Error(data.message || "Failed to generate company profile");
+      }
+
+      // The AI response is nested in data.data
+      const aiData = data.data;
+
+      if (aiData) {
         setCompanyName(aiCompanyName);
         setWebsite(aiWebsite);
-        setPitch(result.pitch || "");
-        setDescription(result.description || "");
-        setHeadquarters(result.headquarters || "");
-        setCompanySize(result.companySize || "");
-        setIndustry(result.industry || "");
-        setFundingStage(result.fundingStage || "");
-        setFoundedYear(result.foundedYear || "");
+        setPitch(aiData.pitch || "");
+        setDescription(aiData.description || "");
+
+        // Handle headquarters - check if it exists in dropdown, otherwise set to "other"
+        const aiHeadquarters = aiData.headquarters || "";
+        const isInDropdown = locations.some(loc => loc.value === aiHeadquarters);
+
+        if (isInDropdown) {
+          setHeadquarters(aiHeadquarters);
+          setCustomHeadquarters("");
+        } else if (aiHeadquarters) {
+          setHeadquarters("other");
+          setCustomHeadquarters(aiHeadquarters);
+        }
+
+        setCompanySize(aiData.companySize || "");
+        setIndustry(aiData.industry || "");
+        setFundingStage(aiData.fundingStage || "");
+        setFoundedYear(aiData.foundedYear || "");
         setShowForm(true);
+
+        toast({
+          title: "Profile Generated!",
+          description: "Your company profile has been generated. Please review and edit as needed.",
+        });
       } else {
         alert("Could not generate profile. Please try manual entry.");
       }
     } catch (error) {
       console.error("Error generating profile:", error);
-      alert("Failed to generate profile. Please try manual entry instead.");
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Failed to generate company profile. Please try manual entry.",
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingProfile(false);
     }
@@ -181,7 +229,7 @@ Return ONLY the JSON object with these exact keys.`,
       alert('This email has already been added');
       return;
     }
-    
+
     setTeamMembers([...teamMembers, newMemberEmail]);
     setNewMemberEmail("");
   };
@@ -194,38 +242,85 @@ Return ONLY the JSON object with these exact keys.`,
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      console.log("Company profile submitted:", {
-        companyName,
-        pitch,
-        description,
-        website,
-        headquarters: headquarters === "other" ? customHeadquarters : headquarters,
-        companySize,
-        industry: industry === "other" ? customIndustry : industry,
-        fundingStage,
-        foundedYear,
-        logo: logoUrl,
-        teamMembers
-      });
-      
-      setIsSubmitting(false);
-      if (isEditMode) {
-        navigate("/EmployerProfile");
-      } else {
-        navigate("/CreateListing");
+    try {
+      // Create FormData for file upload
+      const formData = new FormData();
+
+      // Add all form fields
+      formData.append('companyName', companyName);
+      formData.append('pitch', pitch);
+      formData.append('description', description);
+      formData.append('companyWebsite', website || '');
+      formData.append('headquarters', headquarters === "other" ? customHeadquarters : headquarters);
+      formData.append('companySize', companySize);
+      formData.append('industry', industry === "other" ? customIndustry : industry);
+      formData.append('fundingStage', fundingStage || '');
+      formData.append('foundedYear', foundedYear || '');
+      formData.append('setupMethod', useAI ? 'ai' : 'manual');
+
+      // Add team members as JSON string
+      if (teamMembers.length > 0) {
+        formData.append('teamMembers', JSON.stringify(teamMembers));
       }
-    }, 1500);
+
+      // Add logo file if provided
+      if (logoFile) {
+        formData.append('logo', logoFile);
+      }
+
+      // Get token from localStorage
+      const token = localStorage.getItem('token');
+
+      // Send to backend API
+      const response = await fetch(`${API_URL}/api/employer-onboarding/company-profile`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to save company profile");
+      }
+
+      if (data.success) {
+        toast({
+          title: "Success!",
+          description: isEditMode ? "Company profile updated successfully" : "Company profile created successfully",
+        });
+
+        // Navigate to next page
+        if (isEditMode) {
+          navigate("/EmployerProfile");
+        } else {
+          navigate("/CreateListing");
+        }
+      } else {
+        throw new Error(data.message || "Failed to save company profile");
+      }
+    } catch (error) {
+      console.error("Error submitting company profile:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save company profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const canContinue = companyName && pitch && description && logoUrl && (headquarters && (headquarters !== "other" || customHeadquarters)) && (industry && (industry !== "other" || customIndustry)) && companySize;
+  const canContinue = companyName && pitch && description && (headquarters && (headquarters !== "other" || customHeadquarters)) && (industry && (industry !== "other" || customIndustry)) && companySize;
 
   // Initial choice view
   if (!showForm && !isEditMode && !skipChoice) {
     return (
       <div className="min-h-screen bg-white">
         <Header currentPage="EmployerOnboarding" />
-        
+
         <div className="pt-32 pb-16 px-6">
           <div className="max-w-[720px] mx-auto">
             <motion.div
@@ -257,9 +352,9 @@ Return ONLY the JSON object with these exact keys.`,
                       Let AI do the setup
                     </h2>
                     <p className="text-white/90 font-normal mb-6">
-                      Provide your company name and website — we’ll auto-fill your profile for you to review immediately
+                      Provide your company name and website — we'll auto-fill your profile for you to review immediately
                     </p>
-                    
+
                     <div className="space-y-3">
                       <Input
                         value={aiCompanyName}
@@ -276,7 +371,7 @@ Return ONLY the JSON object with these exact keys.`,
                       />
                     </div>
                   </div>
-                  
+
                   <Button
                     onClick={generateFullProfile}
                     disabled={!aiCompanyName || !aiWebsite || isGeneratingProfile}
@@ -314,7 +409,7 @@ Return ONLY the JSON object with these exact keys.`,
                       Prefer to fill everything out yourself? Take full control and craft your company profile from scratch.
                     </p>
                   </div>
-                  
+
                   <Button
                     onClick={handleManualEntry}
                     variant="outline"
@@ -345,7 +440,7 @@ Return ONLY the JSON object with these exact keys.`,
   return (
     <div className="min-h-screen bg-white">
       <Header currentPage="EmployerOnboarding" />
-      
+
       <div className="pt-32 pb-16 px-6">
         <div className="max-w-3xl mx-auto">
           {!isEditMode && (
@@ -399,7 +494,7 @@ Return ONLY the JSON object with these exact keys.`,
                 <Building2 className="w-5 h-5 text-[#1E3A8A]" />
                 <h2 className="text-xl font-semibold text-[#0B1121]">Basic Information</h2>
               </div>
-              
+
               <div className="space-y-4">
                 {/* Company Logo */}
                 <div className="flex items-center gap-6 mb-6">
@@ -426,9 +521,9 @@ Return ONLY the JSON object with these exact keys.`,
                     </label>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-[#0B1121] mb-1">Company Logo *</p>
+                    <p className="text-sm font-semibold text-[#0B1121] mb-1">Company Logo</p>
                     <p className="text-xs text-[#6B7280] font-normal">
-                      Upload your company logo
+                      Upload your company logo (optional)
                     </p>
                   </div>
                 </div>
@@ -506,7 +601,7 @@ Return ONLY the JSON object with these exact keys.`,
                         </Command>
                       </PopoverContent>
                     </Popover>
-                    
+
                     {headquarters === "other" && (
                       <div className="mt-3">
                         <Input
@@ -581,7 +676,7 @@ Return ONLY the JSON object with these exact keys.`,
                       </Command>
                     </PopoverContent>
                   </Popover>
-                  
+
                   {industry === "other" && (
                     <div className="mt-3">
                       <Input
@@ -645,7 +740,7 @@ Return ONLY the JSON object with these exact keys.`,
                 <Sparkles className="w-5 h-5 text-[#1E3A8A]" />
                 <h2 className="text-xl font-semibold text-[#0B1121]">About Your Company</h2>
               </div>
-              
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-semibold text-[#0B1121] mb-2">
@@ -688,7 +783,7 @@ Return ONLY the JSON object with these exact keys.`,
                   <UserPlus className="w-5 h-5 text-[#1E3A8A]" />
                   <h2 className="text-xl font-semibold text-[#0B1121]">Invite Team Members (Optional)</h2>
                 </div>
-                
+
                 <p className="text-sm text-[#6B7280] mb-4 font-normal">
                   Add colleagues who will help manage hiring for your company. They'll receive an email invitation to join.
                 </p>
@@ -773,7 +868,7 @@ Return ONLY the JSON object with these exact keys.`,
                 type="submit"
                 disabled={!canContinue || isSubmitting}
                 className="h-12 px-8 text-base font-medium rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ 
+                style={{
                   backgroundColor: canContinue ? '#FFFF00' : '#E5E5E5',
                   color: canContinue ? '#1E3A8A' : '#9CA3AF'
                 }}
