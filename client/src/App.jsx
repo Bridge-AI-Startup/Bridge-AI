@@ -9,6 +9,7 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
@@ -41,14 +42,84 @@ const AuthenticatedApp = () => {
     }
   }
 
+  // Define which routes require authentication
+  const protectedStudentRoutes = [
+    'Profile',
+    'StudentDashboard',
+    'Onboarding',
+    'OnboardingParse',
+    'AddProjects',
+    'CompanyPreferences',
+    'ProjectsParse',
+    'PreferencesParse',
+    'BookInterview',
+    'StartAssessment',
+    'TakeAssessment',
+    'StudentPipeline',
+    'StudentNewMatches',
+    'StudentAssessments',
+    'StudentInterviews',
+    'StudentInterviewed',
+    'StudentOffers',
+    'StudentCalendar',
+    'CompanyProfile',
+    'ApplicantProfile'
+  ];
+
+  const protectedEmployerRoutes = [
+    'EmployerProfile',
+    'EmployerDashboard',
+    'EmployerOnboarding',
+    'JobListingDashboard',
+    'ScheduleInterview',
+    'CreateListing',
+    'JobAnalysis',
+    'EditListing',
+    'TeamMembers',
+    'ReviewAssessments',
+    'ReviewMatches',
+    'InterviewCalendar',
+    'ReviewInterviews',
+    'ReviewOffers',
+    'AssignProject',
+    'NewKanbanDesign'
+  ];
+
   // Render the main app
   return (
     <LayoutWrapper currentPageName={mainPageKey}>
       <Routes>
         <Route path="/" element={<MainPage />} />
-        {Object.entries(Pages).map(([path, Page]) => (
-          <Route key={path} path={`/${path}`} element={<Page />} />
-        ))}
+        {Object.entries(Pages).map(([path, Page]) => {
+          // Determine if this route needs protection and which sign-in page to redirect to
+          if (protectedStudentRoutes.includes(path)) {
+            return (
+              <Route
+                key={path}
+                path={`/${path}`}
+                element={
+                  <ProtectedRoute redirectTo="/StudentSignIn" requiredUserType="student">
+                    <Page />
+                  </ProtectedRoute>
+                }
+              />
+            );
+          } else if (protectedEmployerRoutes.includes(path)) {
+            return (
+              <Route
+                key={path}
+                path={`/${path}`}
+                element={
+                  <ProtectedRoute redirectTo="/EmployerSignIn" requiredUserType="employer">
+                    <Page />
+                  </ProtectedRoute>
+                }
+              />
+            );
+          } else {
+            return <Route key={path} path={`/${path}`} element={<Page />} />;
+          }
+        })}
         <Route path="*" element={<PageNotFound />} />
       </Routes>
     </LayoutWrapper>

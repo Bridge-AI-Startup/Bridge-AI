@@ -43,6 +43,7 @@ app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/waitlist', require('./routes/waitlistRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/employer-onboarding', require('./routes/employerOnboardingRoutes'));
+app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Error handling middleware

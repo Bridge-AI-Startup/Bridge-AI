@@ -47,6 +47,7 @@ import StudentOffers from './pages/StudentOffers';
 import NewKanbanDesign from './pages/NewKanbanDesign';
 import StudentCalendar from './pages/StudentCalendar';
 import CompanyProfile from './pages/CompanyProfile';
+import Logout from './pages/Logout';
 import Layout from './Layout.jsx';
 
 
@@ -100,6 +101,7 @@ export const PAGES = {
     "NewKanbanDesign": NewKanbanDesign,
     "StudentCalendar": StudentCalendar,
     "CompanyProfile": CompanyProfile,
+    "Logout": Logout,
 }
 
 export const pagesConfig = {

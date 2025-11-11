@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/config";
 import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
+import { auth } from "@/lib/firebase";
 
 export default function EmployerSignIn() {
   const navigate = useNavigate();
@@ -39,18 +40,22 @@ export default function EmployerSignIn() {
 
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.message || "Sign-in failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'employer');
+        localStorage.setItem('role', data.data.role || 'employer');
         if (data.data.company) {
           localStorage.setItem('company', JSON.stringify(data.data.company));
         }
 
         // Navigate to dashboard
         navigate("/EmployerDashboard");
-      } else {
-        setError(data.message || "Sign-in failed. Please try again.");
       }
     } catch (error) {
       console.error("Sign in error:", error);
@@ -74,7 +79,7 @@ export default function EmployerSignIn() {
 
     try {
       // Step 1: Sign in with Google and get ID token
-      const idToken = await signInWithGoogle();
+      const { idToken, photoURL } = await signInWithGoogle();
 
       // Step 2: Send ID token to backend
       const response = await fetch(`${API_URL}/api/auth/employer/signin`, {
@@ -82,23 +87,27 @@ export default function EmployerSignIn() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, photoURL }),
       });
 
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.message || "Google sign-in failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'employer');
+        localStorage.setItem('role', data.data.role || 'employer');
         if (data.data.company) {
           localStorage.setItem('company', JSON.stringify(data.data.company));
         }
 
         // Navigate to dashboard
         navigate("/EmployerDashboard");
-      } else {
-        setError(data.message || "Google sign-in failed. Please try again.");
       }
     } catch (error) {
       console.error("Google sign in error:", error);

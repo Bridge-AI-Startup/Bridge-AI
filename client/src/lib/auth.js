@@ -19,13 +19,14 @@ export const signUpWithEmail = async (email, password) => {
 
 /**
  * Sign up with Google OAuth
- * @returns {Promise<{idToken: string, user: User}>} Firebase ID token and user object
+ * @returns {Promise<{idToken: string, user: User, photoURL: string|null}>} Firebase ID token, user object, and photo URL
  */
 export const signUpWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   const userCredential = await signInWithPopup(auth, provider);
   const idToken = await userCredential.user.getIdToken();
-  return { idToken, user: userCredential.user };
+  const photoURL = userCredential.user.photoURL;
+  return { idToken, user: userCredential.user, photoURL };
 };
 
 /**
@@ -54,12 +55,13 @@ export const signInWithEmail = async (email, password) => {
 
 /**
  * Sign in with Google OAuth
- * @returns {Promise<string>} Firebase ID token
+ * @returns {Promise<{idToken: string, photoURL: string|null, user: User}>} Firebase ID token, photo URL, and user object
  */
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   const { signInWithPopup } = await import('firebase/auth');
   const userCredential = await signInWithPopup(auth, provider);
   const idToken = await userCredential.user.getIdToken();
-  return idToken;
+  const photoURL = userCredential.user.photoURL;
+  return { idToken, photoURL, user: userCredential.user };
 };

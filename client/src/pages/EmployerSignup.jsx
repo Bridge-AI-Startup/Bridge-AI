@@ -75,10 +75,20 @@ export default function EmployerSignup() {
 
       const data = await response.json();
 
+      if (!response.ok) {
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
+        throw new Error(data.message || "Signup failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'employer');
+        localStorage.setItem('role', data.data.role || 'employer');
         if (data.data.company) {
           localStorage.setItem('company', JSON.stringify(data.data.company));
         }
@@ -89,12 +99,6 @@ export default function EmployerSignup() {
         } else {
           navigate("/EmployerOnboarding?first=true");
         }
-      } else {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        setError(data.message || "Signup failed. Please try again.");
       }
     } catch (error) {
       console.error("Signup error:", error);
@@ -132,7 +136,7 @@ export default function EmployerSignup() {
     let firebaseUser = null;
     try {
       // Step 1: Sign in with Google and get ID token
-      const { idToken, user } = await signUpWithGoogle();
+      const { idToken, user, photoURL } = await signUpWithGoogle();
       firebaseUser = user;
 
       // Step 2: Send ID token to backend
@@ -148,15 +152,26 @@ export default function EmployerSignup() {
           companyName,
           companyWebsite,
           industry,
+          photoURL,
         }),
       });
 
       const data = await response.json();
 
+      if (!response.ok) {
+        // Backend failed - delete the Firebase user
+        if (firebaseUser) {
+          await deleteFirebaseUser(firebaseUser);
+        }
+        throw new Error(data.message || "Google sign-up failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'employer');
+        localStorage.setItem('role', data.data.role || 'employer');
         if (data.data.company) {
           localStorage.setItem('company', JSON.stringify(data.data.company));
         }
@@ -167,12 +182,6 @@ export default function EmployerSignup() {
         } else {
           navigate("/EmployerOnboarding?first=true");
         }
-      } else {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        setError(data.message || "Google sign-up failed. Please try again.");
       }
     } catch (error) {
       console.error("Google signup error:", error);

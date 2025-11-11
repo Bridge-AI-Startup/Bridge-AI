@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { API_URL } from "@/config";
 import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
+import { auth } from "@/lib/firebase";
 
 export default function StudentSignIn() {
   const navigate = useNavigate();
@@ -39,15 +40,19 @@ export default function StudentSignIn() {
 
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.message || "Sign-in failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'student');
+        localStorage.setItem('role', data.data.role || 'user');
 
         // Navigate to dashboard
         navigate("/StudentDashboard");
-      } else {
-        setError(data.message || "Sign-in failed. Please try again.");
       }
     } catch (error) {
       console.error("Sign in error:", error);
@@ -69,9 +74,11 @@ export default function StudentSignIn() {
     setError("");
     setIsSubmitting(true);
 
+    let firebaseUser = null;
     try {
       // Step 1: Sign in with Google and get ID token
-      const idToken = await signInWithGoogle();
+      const { idToken, photoURL, user } = await signInWithGoogle();
+      firebaseUser = user;
 
       // Step 2: Send ID token to backend
       const response = await fetch(`${API_URL}/api/auth/student/signin`, {
@@ -79,23 +86,40 @@ export default function StudentSignIn() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ idToken }),
+        body: JSON.stringify({ idToken, photoURL }),
       });
 
       const data = await response.json();
 
+      if (!response.ok) {
+        // Backend rejected - sign out from Firebase
+        if (firebaseUser) {
+          await auth.signOut();
+        }
+        throw new Error(data.message || "Google sign-in failed. Please try again.");
+      }
+
       if (data.success) {
-        // Store the JWT token
+        // Store the JWT token and user data
         localStorage.setItem('token', data.data.token);
         localStorage.setItem('user', JSON.stringify(data.data.user));
+        localStorage.setItem('userType', 'student');
+        localStorage.setItem('role', data.data.role || 'user');
 
         // Navigate to dashboard
         navigate("/StudentDashboard");
-      } else {
-        setError(data.message || "Google sign-in failed. Please try again.");
       }
     } catch (error) {
       console.error("Google sign in error:", error);
+      // If backend failed, make sure we're signed out from Firebase
+      if (firebaseUser && !error.code?.startsWith('auth/')) {
+        try {
+          await auth.signOut();
+        } catch (signOutError) {
+          console.error("Error signing out from Firebase:", signOutError);
+        }
+      }
+
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-in cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {

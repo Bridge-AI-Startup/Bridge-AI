@@ -18,7 +18,7 @@ const studentSignIn = async (req, res) => {
       });
     }
 
-    const { idToken } = req.body;
+    const { idToken, photoURL } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -30,6 +30,9 @@ const studentSignIn = async (req, res) => {
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, name, picture, email_verified } = decodedToken;
+
+    // Use photoURL from request body if provided, otherwise use from token
+    const userPhotoURL = photoURL || picture;
 
     if (!email) {
       return res.status(400).json({
@@ -54,7 +57,7 @@ const studentSignIn = async (req, res) => {
     user.uid = uid;
     user.email = email;
     user.name = name || user.name;
-    user.profilePicture = picture || user.profilePicture;
+    user.profilePicture = userPhotoURL || user.profilePicture;
     user.emailVerified = email_verified || user.emailVerified;
     user.authProvider = 'google';
     user.lastLoginAt = new Date();
@@ -124,7 +127,7 @@ const employerSignIn = async (req, res) => {
       });
     }
 
-    const { idToken } = req.body;
+    const { idToken, photoURL } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -136,6 +139,9 @@ const employerSignIn = async (req, res) => {
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, name, picture, email_verified } = decodedToken;
+
+    // Use photoURL from request body if provided, otherwise use from token
+    const userPhotoURL = photoURL || picture;
 
     if (!email) {
       return res.status(400).json({
@@ -161,7 +167,7 @@ const employerSignIn = async (req, res) => {
     teamMember.email = email;
     teamMember.firstName = name?.split(' ')[0] || teamMember.firstName;
     teamMember.lastName = name?.split(' ').slice(1).join(' ') || teamMember.lastName;
-    if (picture) teamMember.profilePhoto = { fileUrl: picture };
+    if (userPhotoURL) teamMember.profilePhoto = { fileUrl: userPhotoURL };
     teamMember.emailVerified = email_verified || teamMember.emailVerified;
     teamMember.authProvider = 'google';
     teamMember.lastLoginAt = new Date();
@@ -666,7 +672,7 @@ const studentSignup = async (req, res) => {
       });
     }
 
-    const { idToken, name, university } = req.body;
+    const { idToken, name, university, photoURL } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -678,6 +684,9 @@ const studentSignup = async (req, res) => {
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, picture, email_verified } = decodedToken;
+
+    // Use photoURL from request body if provided, otherwise use from token
+    const userPhotoURL = photoURL || picture;
 
     if (!email) {
       return res.status(400).json({
@@ -716,7 +725,7 @@ const studentSignup = async (req, res) => {
       email,
       name: name || decodedToken.name || email.split('@')[0],
       authProvider: 'google',
-      profilePicture: picture,
+      profilePicture: userPhotoURL,
       emailVerified: email_verified || false,
       role: 'user',
       university: university || email.split('@')[1]?.split('.')[0]?.toUpperCase(),
@@ -771,7 +780,7 @@ const employerSignup = async (req, res) => {
       });
     }
 
-    const { idToken, companyName, companyWebsite, industry, firstName, lastName } = req.body;
+    const { idToken, companyName, companyWebsite, industry, firstName, lastName, photoURL } = req.body;
 
     if (!idToken) {
       return res.status(400).json({
@@ -790,6 +799,9 @@ const employerSignup = async (req, res) => {
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, picture, email_verified } = decodedToken;
+
+    // Use photoURL from request body if provided, otherwise use from token
+    const userPhotoURL = photoURL || picture;
 
     if (!email) {
       return res.status(400).json({
@@ -839,7 +851,7 @@ const employerSignup = async (req, res) => {
       companyId: company._id,
       companyRole: 'admin',
       authProvider: 'google',
-      profilePhoto: picture ? { fileUrl: picture } : undefined,
+      profilePhoto: userPhotoURL ? { fileUrl: userPhotoURL } : undefined,
       emailVerified: email_verified || false,
       lastLoginAt: new Date(),
     });

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, Building2, Globe, MapPin, Users, DollarSign, Calendar, Sparkles, Loader2, Camera, UserPlus, X } from "lucide-react";
 import Header from "../components/navigation/Header";
-import Breadcrumbs from "../components/navigation/Breadcrumbs"; // Added import for Breadcrumbs
+import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,35 +22,103 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Check, ChevronsUpDown } from "lucide-react";
+import { API_URL } from "@/config";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function EmployerProfile() {
   const navigate = useNavigate();
-  
-  // Form state - pre-filled with existing data
-  const [companyName, setCompanyName] = useState("Acme Robotics");
-  const [pitch, setPitch] = useState("Revolutionizing warehouse logistics with autonomous robotics.");
-  const [description, setDescription] = useState("Acme Robotics builds advanced autonomous systems for warehouse logistics, enhancing efficiency and reducing operational costs.");
-  const [website, setWebsite] = useState("https://acmerobotics.com");
-  const [headquarters, setHeadquarters] = useState("San Francisco, CA");
+  const { toast } = useToast();
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [companyName, setCompanyName] = useState("");
+  const [pitch, setPitch] = useState("");
+  const [description, setDescription] = useState("");
+  const [website, setWebsite] = useState("");
+  const [headquarters, setHeadquarters] = useState("");
   const [customHeadquarters, setCustomHeadquarters] = useState("");
-  const [companySize, setCompanySize] = useState("51-200");
-  const [industry, setIndustry] = useState("robotics");
+  const [companySize, setCompanySize] = useState("");
+  const [industry, setIndustry] = useState("");
   const [customIndustry, setCustomIndustry] = useState("");
-  const [fundingStage, setFundingStage] = useState("series-a");
-  const [foundedYear, setFoundedYear] = useState("2020");
+  const [fundingStage, setFundingStage] = useState("");
+  const [foundedYear, setFoundedYear] = useState("");
   const [logoUrl, setLogoUrl] = useState(null);
-  
+  const [logoFile, setLogoFile] = useState(null);
+
   // Team members state
   const [teamMembers, setTeamMembers] = useState([]);
   const [newMemberEmail, setNewMemberEmail] = useState("");
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [industryOpen, setIndustryOpen] = useState(false);
   const [headquartersOpen, setHeadquartersOpen] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    fetchProfileData();
   }, []);
+
+  const fetchProfileData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_URL}/api/profile/employer`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch profile');
+      }
+
+      if (data.success && data.data.company) {
+        const company = data.data.company;
+
+        // Set company data
+        setCompanyName(company.companyName || '');
+        setPitch(company.oneSentencePitch || '');
+        setDescription(company.companyDescription || '');
+        setWebsite(company.companyWebsite || '');
+        setCompanySize(company.companySize || '');
+        setIndustry(company.industry || '');
+        setFundingStage(company.fundingStage || '');
+        setFoundedYear(company.foundedYear?.toString() || '');
+
+        // Handle headquarters
+        if (company.headquarters) {
+          const hqString = `${company.headquarters.city}, ${company.headquarters.state}`.trim();
+          const locations = [
+            "San Francisco, CA", "New York, NY", "Los Angeles, CA", "San Diego, CA",
+            "Austin, TX", "Boston, MA", "Seattle, WA", "Chicago, IL", "Denver, CO",
+            "Miami, FL", "Atlanta, GA", "Portland, OR", "Remote"
+          ];
+
+          if (locations.includes(hqString)) {
+            setHeadquarters(hqString);
+          } else if (company.headquarters.city) {
+            setHeadquarters("other");
+            setCustomHeadquarters(hqString);
+          }
+        }
+
+        // Handle logo
+        if (company.companyLogo && company.companyLogo.fileUrl) {
+          setLogoUrl(company.companyLogo.fileUrl);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load company profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const industries = [
     { value: "technology", label: "Technology" },
@@ -87,6 +155,7 @@ export default function EmployerProfile() {
   const handleLogoChange = (e) => {
     const file = e.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
+      setLogoFile(file); // Store the file for upload
       const reader = new FileReader();
       reader.onloadend = () => {
         setLogoUrl(reader.result);
@@ -118,37 +187,92 @@ export default function EmployerProfile() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      console.log("Company profile updated:", {
-        companyName,
-        pitch,
-        description,
-        website,
-        headquarters: headquarters === "other" ? customHeadquarters : headquarters,
-        companySize,
-        industry: industry === "other" ? customIndustry : industry,
-        fundingStage,
-        foundedYear,
-        logo: logoUrl,
-        teamMembers
+    try {
+      const formData = new FormData();
+      const token = localStorage.getItem('token');
+
+      // Add all form fields
+      formData.append('companyName', companyName);
+      formData.append('pitch', pitch);
+      formData.append('description', description);
+      formData.append('companyWebsite', website || '');
+      formData.append('headquarters', headquarters === "other" ? customHeadquarters : headquarters);
+      formData.append('companySize', companySize);
+      formData.append('industry', industry === "other" ? customIndustry : industry);
+      formData.append('fundingStage', fundingStage || '');
+      formData.append('foundedYear', foundedYear || '');
+      formData.append('setupMethod', 'manual');
+
+      // Add team members if any
+      if (teamMembers.length > 0) {
+        formData.append('teamMembers', JSON.stringify(teamMembers));
+      }
+
+      // Add logo file if provided
+      if (logoFile) {
+        formData.append('logo', logoFile);
+      }
+
+      // Send to backend API
+      const response = await fetch(`${API_URL}/api/employer-onboarding/company-profile`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
       });
-      
-      setIsSubmitting(false);
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to update company profile");
+      }
+
+      toast({
+        title: "Success!",
+        description: "Company profile updated successfully",
+      });
+
       navigate("/EmployerDashboard");
-    }, 1500);
+    } catch (error) {
+      console.error("Error updating company profile:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update company profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const canContinue = companyName && pitch && description && logoUrl && (headquarters && (headquarters !== "other" || customHeadquarters)) && (industry && (industry !== "other" || customIndustry)) && companySize;
+  const canContinue = companyName && pitch && description && (headquarters && (headquarters !== "other" || customHeadquarters)) && (industry && (industry !== "other" || customIndustry)) && companySize;
 
   const breadcrumbItems = [
     { label: "Dashboard", path: "EmployerDashboard" },
     { label: "Company Profile" }
   ];
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Header currentPage="EmployerProfile" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-3xl mx-auto flex items-center justify-center min-h-[60vh]">
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 animate-spin text-[#1E3A8A] mx-auto mb-4" />
+              <p className="text-[#6B7280]">Loading company profile...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <Header currentPage="EmployerProfile" />
-      
+
       <div className="pt-24 pb-16 px-6">
         <div className="max-w-3xl mx-auto">
           {/* Breadcrumbs */}
@@ -208,9 +332,9 @@ export default function EmployerProfile() {
                     </label>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-[#0B1121] mb-1">Company Logo *</p>
+                    <p className="text-sm font-semibold text-[#0B1121] mb-1">Company Logo</p>
                     <p className="text-xs text-[#6B7280] font-normal">
-                      Upload your company logo
+                      Upload your company logo (optional)
                     </p>
                   </div>
                 </div>

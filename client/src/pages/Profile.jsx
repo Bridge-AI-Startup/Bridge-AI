@@ -2,47 +2,98 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Briefcase, Settings as SettingsIcon, FileText, Camera, Linkedin, Github, CheckCircle2, Trash2, Lock } from "lucide-react";
+import { Briefcase, Settings as SettingsIcon, FileText, Camera, Linkedin, Github, CheckCircle2, Trash2, Lock, Loader2 } from "lucide-react";
 import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { API_URL } from "@/config";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Profile() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { toast } = useToast();
+
+  const [isLoading, setIsLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState(null);
-  const [fullName, setFullName] = useState("Alex Johnson");
-  const [email] = useState("alex.johnson@ucsd.edu");
-  const [university, setUniversity] = useState("UC San Diego");
-  const [major, setMajor] = useState("Computer Science");
-  const [gradYear, setGradYear] = useState("2026");
-  
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [university, setUniversity] = useState("");
+  const [major, setMajor] = useState("");
+  const [gradYear, setGradYear] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [githubUrl, setGithubUrl] = useState("");
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  
-  const [linkedinConnected, setLinkedinConnected] = useState(true);
-  const [githubConnected, setGithubConnected] = useState(false);
-  
+
   const [isSaving, setIsSaving] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const [completionSections, setCompletionSections] = useState({
+    resume: false,
+    projects: false,
+    preferences: false
+  });
+  const [completedCount, setCompletedCount] = useState(0);
+  const [completionPercentage, setCompletionPercentage] = useState(0);
 
   // Get navigation source from state
   const from = location.state?.from;
 
   useEffect(() => {
     window.scrollTo(0, 0);
+    fetchProfileData();
   }, []);
 
-  const completionSections = {
-    resume: true,
-    projects: true,
-    preferences: false
+  const fetchProfileData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_URL}/api/profile/student`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch profile');
+      }
+
+      if (data.success) {
+        const userData = data.data.user;
+        const completion = data.data.completion;
+
+        // Set user data
+        setFullName(userData.name || '');
+        setEmail(userData.email || '');
+        setUniversity(userData.university || '');
+        setMajor(userData.major || '');
+        setGradYear(userData.gradYear || '');
+        setLinkedinUrl(userData.linkedinUrl || '');
+        setGithubUrl(userData.githubUrl || '');
+
+        // Set completion data
+        setCompletionSections(completion.sections);
+        setCompletedCount(completion.completedCount);
+        setCompletionPercentage(completion.completionPercentage);
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to load profile data",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
-  const completedCount = Object.values(completionSections).filter(Boolean).length;
-  const completionPercentage = Math.round((completedCount / 3) * 100);
 
   const handleAvatarChange = (e) => {
     const file = e.target.files?.[0];
@@ -55,9 +106,51 @@ export default function Profile() {
     }
   };
 
-  const handleSaveBasics = () => {
+  const handleSaveBasics = async () => {
     setIsSaving(true);
-    setTimeout(() => setIsSaving(false), 1000);
+
+    try {
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_URL}/api/profile/student`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: fullName,
+          university,
+          major,
+          gradYear,
+          linkedinUrl,
+          githubUrl
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to update profile');
+      }
+
+      toast({
+        title: "Success!",
+        description: "Your profile has been updated successfully",
+      });
+
+      // Refresh profile data
+      await fetchProfileData();
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleChangePassword = () => {
@@ -116,10 +209,26 @@ export default function Profile() {
   breadcrumbItems.push({ label: "Profile" });
 
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header currentPage="Profile" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+            <div className="text-center">
+              <Loader2 className="w-12 h-12 animate-spin text-[#1E3A8A] mx-auto mb-4" />
+              <p className="text-[#6B7280]">Loading your profile...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header currentPage="Profile" />
-      
+
       <div className="pt-24 pb-16 px-6">
         <div className="max-w-7xl mx-auto">
           {/* Breadcrumbs */}
@@ -227,17 +336,19 @@ export default function Profile() {
                       <div>
                         <p className="font-semibold text-[#0B1121]">LinkedIn</p>
                         <p className="text-xs text-[#6B7280] font-normal">
-                          {linkedinConnected ? "Connected" : "Not connected"}
+                          {linkedinUrl ? "Connected" : "Not connected"}
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={() => setLinkedinConnected(!linkedinConnected)}
-                      variant={linkedinConnected ? "outline" : "default"}
-                      className="h-9"
-                    >
-                      {linkedinConnected ? "Disconnect" : "Connect"}
-                    </Button>
+                    {linkedinUrl && (
+                      <Button
+                        onClick={() => window.open(linkedinUrl, '_blank')}
+                        variant="outline"
+                        className="h-9"
+                      >
+                        View Profile
+                      </Button>
+                    )}
                   </div>
 
                   {/* GitHub */}
@@ -249,17 +360,19 @@ export default function Profile() {
                       <div>
                         <p className="font-semibold text-[#0B1121]">GitHub</p>
                         <p className="text-xs text-[#6B7280] font-normal">
-                          {githubConnected ? "Connected" : "Not connected"}
+                          {githubUrl ? "Connected" : "Not connected"}
                         </p>
                       </div>
                     </div>
-                    <Button
-                      onClick={() => setGithubConnected(!githubConnected)}
-                      variant={githubConnected ? "outline" : "default"}
-                      className="h-9"
-                    >
-                      {githubConnected ? "Disconnect" : "Connect"}
-                    </Button>
+                    {githubUrl && (
+                      <Button
+                        onClick={() => window.open(githubUrl, '_blank')}
+                        variant="outline"
+                        className="h-9"
+                      >
+                        View Profile
+                      </Button>
+                    )}
                   </div>
                 </div>
               </motion.div>

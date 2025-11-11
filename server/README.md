@@ -160,3 +160,10 @@ See [.env.example](./.env.example) for complete environment variable documentati
 
 [Your License Here]
 
+Adi notes:
+port 5173 no auth
+port 5174 auth pipelines
+port 3667 server
+/logout to log out on auth pipelines
+fix firebase creating an account even when sign in fails error
+fix profile picture error on profile screen
