@@ -1,11 +1,9 @@
-
-import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import ProjectsHeader from "../components/projects/ProjectsHeader";
-// SaveAnimation removed
 import FileUploadZone from "../components/projects/FileUploadZone";
 import ProjectsList from "../components/projects/ProjectsList";
 import GitHubConnect from "../components/projects/GitHubConnect";
@@ -13,20 +11,13 @@ import ProjectsActions from "../components/projects/ProjectsActions";
 import { useToast } from "@/components/ui/use-toast";
 import { API_URL } from "@/config";
 
-export default function AddProjects() {
+export default function EditProjects() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
-  const from = location.state?.from; // Track where we came from
   const [projects, setProjects] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [existingProjects, setExistingProjects] = useState([]);
   const [githubUrl, setGithubUrl] = useState("");
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    loadOnboardingStatus();
-  }, []);
 
   const handleFilesAdded = (files) => {
     const newProjects = files.map((file) => ({
@@ -47,10 +38,13 @@ export default function AddProjects() {
     setProjects(projects.filter(p => p.id !== id));
   };
 
-  const loadOnboardingStatus = async () => {
+  const loadOnboardingStatus = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        navigate('/StudentSignIn');
+        return;
+      }
 
       const response = await fetch(`${API_URL}/api/onboarding/status`, {
         headers: {
@@ -59,26 +53,45 @@ export default function AddProjects() {
       });
 
       const data = await response.json();
+
+      // Handle authentication errors
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again",
+            variant: "destructive"
+          });
+          navigate('/StudentSignIn');
+          return;
+        }
+        throw new Error(data.message || 'Failed to load data');
+      }
+
       if (data.success && data.data.user) {
-        // Load existing projects
         if (data.data.user.projects && data.data.user.projects.length > 0) {
           setExistingProjects(data.data.user.projects);
         }
-        // Load GitHub URL if exists
         if (data.data.user.githubUrl) {
           setGithubUrl(data.data.user.githubUrl);
         }
       }
     } catch (error) {
       console.error('Error loading onboarding status:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to load your information',
+        variant: "destructive"
+      });
     }
-  };
+  }, [navigate, toast]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    loadOnboardingStatus();
+  }, [loadOnboardingStatus]);
 
   const handleGitHubRepos = async (repos) => {
-    // Don't add GitHub repos to projects list - just save the GitHub URL to backend
-    // GitHub repos will be displayed separately, not as file-based projects
-
-    // Save GitHub URL to backend if provided
     if (repos.length > 0 && repos[0].profileUrl) {
       try {
         const token = localStorage.getItem('token');
@@ -126,7 +139,6 @@ export default function AddProjects() {
           formData.append('title', project.name);
           formData.append('description', project.description || '');
 
-          // Add files if they exist
           if (project.file) {
             formData.append('projectFiles', project.file);
           }
@@ -153,15 +165,9 @@ export default function AddProjects() {
 
       setIsSaving(false);
 
-      // Navigate based on where we came from
+      // Always return to Profile
       setTimeout(() => {
-        if (from === 'Profile') {
-          // If coming from Profile, go back to Profile
-          navigate("/Profile");
-        } else {
-          // First-time onboarding - continue to next step
-          navigate("/CompanyPreferences");
-        }
+        navigate("/Profile");
       }, 500);
     } catch (error) {
       console.error('Error saving projects:', error);
@@ -174,18 +180,8 @@ export default function AddProjects() {
     }
   };
 
-  const handleSkip = () => {
-    navigate("/StudentDashboard");
-  };
-
   const handleBack = () => {
-    if (from === 'Profile') {
-      // If coming from Profile, go back to Profile
-      navigate("/Profile");
-    } else {
-      // First-time onboarding - go back to previous step
-      navigate("/Onboarding");
-    }
+    navigate("/Profile");
   };
 
   return (
@@ -194,10 +190,11 @@ export default function AddProjects() {
 
       <div className="pt-24 pb-32 px-6">
         <div className="max-w-4xl mx-auto">
-          {from === 'Profile' && <Breadcrumbs from={from} currentPage="Projects" />}
+          <Breadcrumbs items={[
+            { label: "Profile", path: "Profile" },
+            { label: "Projects" }
+          ]} />
           <ProjectsHeader />
-          
-          {/* SaveAnimation component removed */}
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -205,7 +202,10 @@ export default function AddProjects() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="mb-8"
           >
-            <GitHubConnect onReposImported={handleGitHubRepos} />
+            <GitHubConnect
+              onReposImported={handleGitHubRepos}
+              initialGithubUrl={githubUrl}
+            />
           </motion.div>
 
           <ProjectsList

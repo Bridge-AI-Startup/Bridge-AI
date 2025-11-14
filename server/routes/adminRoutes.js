@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const TeamMember = require('../models/TeamMember');
 const Company = require('../models/Company');
+const JobListing = require('../models/JobListing');
 
 // Middleware to check if we're in development mode
 const devOnly = (req, res, next) => {
@@ -204,10 +205,16 @@ router.get('/table', devOnly, (req, res) => {
       <div id="companiesLoading" class="loading">Loading companies...</div>
       <div id="companiesTable"></div>
     </div>
+
+    <h2 class="section-title">Job Listings</h2>
+    <div class="table-container">
+      <div id="jobListingsLoading" class="loading">Loading job listings...</div>
+      <div id="jobListingsTable"></div>
+    </div>
   </div>
 
   <script>
-    let allData = { users: [], employers: [], companies: [] };
+    let allData = { users: [], employers: [], companies: [], jobListings: [] };
 
     function formatDate(dateString) {
       if (!dateString) return '-';
@@ -433,10 +440,67 @@ router.get('/table', devOnly, (req, res) => {
       }
     }
 
+    async function loadJobListings() {
+      document.getElementById('jobListingsLoading').style.display = 'block';
+      document.getElementById('jobListingsTable').innerHTML = '';
+
+      try {
+        const response = await fetch('/api/admin/job-listings');
+        const data = await response.json();
+
+        document.getElementById('jobListingsLoading').style.display = 'none';
+
+        if (data.success && data.data.length > 0) {
+          allData.jobListings = data.data;
+
+          let html = '<table><thead><tr>';
+          html += '<th>ID</th>';
+          html += '<th>Role Title</th>';
+          html += '<th>Company</th>';
+          html += '<th>Department</th>';
+          html += '<th>Location Type</th>';
+          html += '<th>Office Location</th>';
+          html += '<th>Status</th>';
+          html += '<th>Visibility</th>';
+          html += '<th>Created By</th>';
+          html += '<th>Posted At</th>';
+          html += '<th>Application Deadline</th>';
+          html += '<th>Created</th>';
+          html += '</tr></thead><tbody>';
+
+          data.data.forEach(listing => {
+            html += '<tr>';
+            html += '<td><code>' + (listing._id || '-') + '</code></td>';
+            html += '<td>' + (listing.roleTitle || '-') + '</td>';
+            html += '<td>' + (listing.companyId?.companyName || '<span class="empty">-</span>') + '</td>';
+            html += '<td>' + (listing.department || '<span class="empty">-</span>') + '</td>';
+            html += '<td><span class="badge badge-true">' + (listing.locationType || '-') + '</span></td>';
+            html += '<td>' + (listing.officeLocation?.city ? listing.officeLocation.city + ', ' + (listing.officeLocation.state || '') : '<span class="empty">-</span>') + '</td>';
+            html += '<td><span class="badge ' + (listing.status === 'active' ? 'badge-true' : listing.status === 'draft' ? 'badge-pending' : 'badge-false') + '">' + (listing.status || '-') + '</span></td>';
+            html += '<td>' + (listing.visibility || '-') + '</td>';
+            html += '<td>' + (listing.createdBy ? (listing.createdBy.firstName + ' ' + listing.createdBy.lastName) : '<span class="empty">-</span>') + '</td>';
+            html += '<td>' + formatDate(listing.postedAt) + '</td>';
+            html += '<td>' + formatDate(listing.applicationDeadline) + '</td>';
+            html += '<td>' + formatDate(listing.createdAt) + '</td>';
+            html += '</tr>';
+          });
+
+          html += '</tbody></table>';
+          document.getElementById('jobListingsTable').innerHTML = html;
+        } else {
+          document.getElementById('jobListingsTable').innerHTML = '<div class="loading">No job listings found</div>';
+        }
+      } catch (error) {
+        document.getElementById('jobListingsLoading').style.display = 'none';
+        document.getElementById('jobListingsTable').innerHTML = '<div class="loading" style="color: #ef4444;">Error: ' + error.message + '</div>';
+      }
+    }
+
     function loadAllData() {
       loadUsers();
       loadEmployers();
       loadCompanies();
+      loadJobListings();
       document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
     }
 
@@ -1045,6 +1109,24 @@ router.get('/companies', devOnly, async (req, res) => {
   try {
     const companies = await Company.find().select('-__v').sort({ createdAt: -1 });
     res.json({ success: true, data: companies });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Get all job listings
+ * @route   GET /api/admin/job-listings
+ * @access  Development only
+ */
+router.get('/job-listings', devOnly, async (req, res) => {
+  try {
+    const jobListings = await JobListing.find()
+      .populate('companyId', 'companyName')
+      .populate('createdBy', 'firstName lastName')
+      .select('-__v')
+      .sort({ createdAt: -1 });
+    res.json({ success: true, data: jobListings });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

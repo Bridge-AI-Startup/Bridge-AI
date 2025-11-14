@@ -27,7 +27,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { base44 } from "@/api/base44Client";
+import { API_URL } from "@/config";
+import { useToast } from "@/components/ui/use-toast";
 
 const COMMON_SKILLS = [
   "React", "JavaScript", "TypeScript", "Python", "Java", "Node.js",
@@ -57,21 +58,31 @@ export default function CreateListing() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const shouldRestore = searchParams.get("restore") === "true";
-  
+  const editingListingId = searchParams.get("id"); // Get ID for editing mode
+  const isEditMode = !!editingListingId;
+  const { toast } = useToast();
+
+  // Loading state for fetching existing listing
+  const [isLoadingListing, setIsLoadingListing] = useState(false);
+
   // Import state
   const [showImportOption, setShowImportOption] = useState(true);
   const [importUrl, setImportUrl] = useState("");
   const [isImporting, setIsImporting] = useState(false);
-  
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [responsibilities, setResponsibilities] = useState([""]);
-  const [qualifications, setQualifications] = useState([""]);
+  const [responsibilities, setResponsibilities] = useState([]);
+  const [newResponsibility, setNewResponsibility] = useState("");
+  const [editingResponsibility, setEditingResponsibility] = useState(null);
+  const [qualifications, setQualifications] = useState([]);
+  const [newQualification, setNewQualification] = useState("");
+  const [editingQualification, setEditingQualification] = useState(null);
   const [skills, setSkills] = useState([]);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const [customSkill, setCustomSkill] = useState("");
   const [showCustomSkillInput, setShowCustomSkillInput] = useState(false);
-  
+
   const [locationType, setLocationType] = useState("remote");
   const [location, setLocation] = useState("");
   const [locationOpen, setLocationOpen] = useState(false);
@@ -82,7 +93,7 @@ export default function CreateListing() {
   const [compensationType, setCompensationType] = useState("unpaid");
   const [salaryPeriod, setSalaryPeriod] = useState("year"); // Default to 'year' for salary
   const [equity, setEquity] = useState("");
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingResponsibilities, setIsGeneratingResponsibilities] = useState(false);
   const [isGeneratingQualifications, setIsGeneratingQualifications] = useState(false);
@@ -90,12 +101,129 @@ export default function CreateListing() {
 
   const breadcrumbItems = [
     { label: "Dashboard", path: "EmployerDashboard" },
-    { label: "Create Listing" }
+    { label: isEditMode ? "Edit Listing" : "Create Listing" }
   ];
+
+  // Fetch existing listing data when in edit mode
+  useEffect(() => {
+    const fetchListing = async () => {
+      if (!isEditMode || !editingListingId) return;
+
+      setIsLoadingListing(true);
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          toast({
+            title: "Authentication Required",
+            description: "Please log in to edit listings.",
+            variant: "destructive",
+          });
+          navigate('/signin');
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/api/job-listings/${editingListingId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch job listing');
+        }
+
+        const data = await response.json();
+        if (data.success && data.data.jobListing) {
+          const listing = data.data.jobListing;
+
+          // Populate form with existing data
+          setTitle(listing.roleTitle || "");
+          setDescription(listing.roleDescription || "");
+          setResponsibilities(listing.keyResponsibilities || []);
+          setQualifications(listing.qualifications || []);
+          setSkills(listing.requiredSkills?.map(s => s.skillName) || []);
+
+          // Map locationType from backend
+          let mappedLocationType = listing.locationType || "remote";
+          if (mappedLocationType === "in_person") {
+            mappedLocationType = "onsite";
+          }
+          setLocationType(mappedLocationType);
+
+          // Set location
+          if (listing.officeLocation && listing.officeLocation.city) {
+            const locationStr = `${listing.officeLocation.city}, ${listing.officeLocation.state}`;
+            // Check if it's in our predefined locations
+            const predefinedLocation = LOCATIONS.find(opt => opt.value === locationStr);
+            if (predefinedLocation) {
+              setLocation(locationStr);
+            } else {
+              setLocation("other");
+              setCustomLocation(locationStr);
+            }
+          }
+
+          // Set dates and hours
+          if (listing.startDate) {
+            const date = new Date(listing.startDate);
+            setStartDate(date.toISOString().split('T')[0]);
+          }
+
+          // Convert hoursPerWeek number to range string
+          const getHoursPerWeekRange = (hours) => {
+            if (hours <= 12.5) return "10-15";
+            if (hours <= 17.5) return "15-20";
+            if (hours <= 25) return "20-30";
+            return "30-40";
+          };
+          setHoursPerWeek(listing.hoursPerWeek ? getHoursPerWeekRange(listing.hoursPerWeek) : "");
+
+          // Set compensation
+          if (listing.compensation) {
+            const compType = listing.compensation.type;
+            if (compType === "unpaid") {
+              setCompensationType("unpaid");
+              setCompensation("");
+            } else if (listing.compensation.salary) {
+              setCompensationType("salary");
+              setCompensation(listing.compensation.salary.min?.toString() || "");
+
+              // Map period
+              const period = listing.compensation.salary.period;
+              if (period === "hourly") setSalaryPeriod("hour");
+              else if (period === "monthly") setSalaryPeriod("month");
+              else setSalaryPeriod("year");
+            }
+
+            // Set equity
+            if (listing.compensation.equityOffer?.hasEquity) {
+              setEquity(listing.compensation.equityOffer.percentage?.toString() || "");
+            }
+          }
+
+          // Hide import option when editing
+          setShowImportOption(false);
+        }
+      } catch (error) {
+        console.error('Error fetching job listing:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load job listing. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingListing(false);
+      }
+    };
+
+    fetchListing();
+  }, [isEditMode, editingListingId, navigate, toast]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    
+
     // Only restore listing data if coming back from AssignProject (restore=true param)
     if (shouldRestore) {
       const pendingData = sessionStorage.getItem('pendingListing');
@@ -103,8 +231,8 @@ export default function CreateListing() {
         const data = JSON.parse(pendingData);
         setTitle(data.title || "");
         setDescription(data.description || "");
-        setResponsibilities(data.responsibilities && data.responsibilities.length > 0 ? data.responsibilities : [""]);
-        setQualifications(data.qualifications && data.qualifications.length > 0 ? data.qualifications : [""]);
+        setResponsibilities(data.responsibilities && data.responsibilities.length > 0 ? data.responsibilities : []);
+        setQualifications(data.qualifications && data.qualifications.length > 0 ? data.qualifications : []);
         setSkills(data.skills || []);
         setLocationType(data.locationType || "remote");
         setLocation(data.location || "");
@@ -125,115 +253,157 @@ export default function CreateListing() {
 
   const handleImportListing = async () => {
     if (!importUrl) {
-      alert("Please enter a job listing URL");
+      toast({
+        title: "URL Required",
+        description: "Please enter a job listing URL",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsImporting(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract job listing information from this URL: ${importUrl}
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to use AI features.",
+          variant: "destructive",
+        });
+        navigate('/signin');
+        return;
+      }
 
-Return a JSON object with the following fields:
-- title: Job title
-- description: Full job description (2-3 paragraphs)
-- responsibilities: Array of 5-7 key responsibilities
-- qualifications: Array of 5-7 required qualifications
-- skills: Array of 8-12 required skills (technical and soft skills)
-- locationType: "remote", "onsite", or "hybrid"
-- location: Office location if applicable (e.g., "San Francisco, CA")
-- hoursPerWeek: "10-15", "15-20", "20-30", or "30-40"
-- compensationType: "unpaid" or "salary"
-- compensation: Compensation amount if paid (e.g., "20" or "30000") - just the number
-- salaryPeriod: "hour", "month", or "year" (only if compensationType is "salary")
-- equity: Equity offer if applicable (e.g., "0.1%" or "1000 shares")
-
-Return ONLY the JSON object with these exact keys.`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            description: { type: "string" },
-            responsibilities: { type: "array", items: { type: "string" } },
-            qualifications: { type: "array", items: { type: "string" } },
-            skills: { type: "array", items: { type: "string" } },
-            locationType: { type: "string" },
-            location: { type: "string" },
-            hoursPerWeek: { type: "string" },
-            compensationType: { type: "string" },
-            compensation: { type: "string" },
-            salaryPeriod: { type: "string" }, // New field in schema
-            equity: { type: "string" }
-          },
-          required: ["title", "description"]
-        }
+      const response = await fetch(`${API_URL}/api/job-listings/ai/import`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: importUrl }),
       });
 
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to import job listing");
+      }
+
+      const result = data.data;
       if (result) {
         setTitle(result.title || "");
         setDescription(result.description || "");
-        setResponsibilities(result.responsibilities && result.responsibilities.length > 0 ? result.responsibilities : [""]);
-        setQualifications(result.qualifications && result.qualifications.length > 0 ? result.qualifications : [""]);
+        setResponsibilities(result.responsibilities && result.responsibilities.length > 0 ? result.responsibilities : []);
+        setQualifications(result.qualifications && result.qualifications.length > 0 ? result.qualifications : []);
         setSkills(result.skills && result.skills.length > 0 ? result.skills : []);
-        setLocationType(result.locationType || "remote");
+
+        // Map locationType from backend
+        let mappedLocationType = result.locationType || "remote";
+        if (mappedLocationType === "in_person") {
+          mappedLocationType = "onsite";
+        }
+        setLocationType(mappedLocationType);
+
         setLocation(result.location || "");
-        setCustomLocation(""); 
+        setCustomLocation("");
         setStartDate(result.startDate || "");
         setHoursPerWeek(result.hoursPerWeek || "");
-        
+
         let importedCompensationType = result.compensationType || "unpaid";
-        // Ensure compensationType is 'salary' if it was 'hourly' or 'stipend' before
-        if (importedCompensationType === "hourly" || importedCompensationType === "stipend") {
+        // Map to match frontend options
+        if (importedCompensationType === "paid") {
           importedCompensationType = "salary";
         }
         setCompensationType(importedCompensationType);
-        
-        setCompensation(importedCompensationType === "unpaid" ? "" : result.compensation || ""); 
-        setSalaryPeriod(result.salaryPeriod || "year"); // Use explicit salaryPeriod from AI
+
+        setCompensation(importedCompensationType === "unpaid" ? "" : result.compensation || "");
+        setSalaryPeriod(result.salaryPeriod || "year");
         setEquity(result.equity || "");
-        
+
         setShowImportOption(false);
+        toast({
+          title: "Success!",
+          description: "Job listing imported successfully",
+        });
       } else {
-        alert("Could not extract job listing information. Please try again or create manually.");
+        toast({
+          title: "Import Failed",
+          description: "Could not extract job listing information. Please try again or create manually.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error importing listing:", error);
-      alert("Failed to import job listing. Please try again or create manually.");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to import job listing. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsImporting(false);
     }
   };
 
   const addResponsibility = () => {
-    setResponsibilities([...responsibilities, ""]);
+    if (newResponsibility.trim()) {
+      setResponsibilities([...responsibilities, newResponsibility.trim()]);
+      setNewResponsibility("");
+    }
   };
 
   const removeResponsibility = (index) => {
-    if (responsibilities.length > 1) {
-      setResponsibilities(responsibilities.filter((_, i) => i !== index));
+    setResponsibilities(responsibilities.filter((_, i) => i !== index));
+    if (editingResponsibility === index) {
+      setEditingResponsibility(null);
     }
   };
 
-  const updateResponsibility = (index, value) => {
-    const updated = [...responsibilities];
-    updated[index] = value;
-    setResponsibilities(updated);
+  const startEditResponsibility = (index) => {
+    setEditingResponsibility(index);
+  };
+
+  const saveEditResponsibility = (index, value) => {
+    if (value.trim()) {
+      const updated = [...responsibilities];
+      updated[index] = value.trim();
+      setResponsibilities(updated);
+    }
+    setEditingResponsibility(null);
+  };
+
+  const cancelEditResponsibility = () => {
+    setEditingResponsibility(null);
   };
 
   const addQualification = () => {
-    setQualifications([...qualifications, ""]);
-  };
-
-  const removeQualification = (index) => {
-    if (qualifications.length > 1) {
-      setQualifications(qualifications.filter((_, i) => i !== index));
+    if (newQualification.trim()) {
+      setQualifications([...qualifications, newQualification.trim()]);
+      setNewQualification("");
     }
   };
 
-  const updateQualification = (index, value) => {
-    const updated = [...qualifications];
-    updated[index] = value;
-    setQualifications(updated);
+  const removeQualification = (index) => {
+    setQualifications(qualifications.filter((_, i) => i !== index));
+    if (editingQualification === index) {
+      setEditingQualification(null);
+    }
+  };
+
+  const startEditQualification = (index) => {
+    setEditingQualification(index);
+  };
+
+  const saveEditQualification = (index, value) => {
+    if (value.trim()) {
+      const updated = [...qualifications];
+      updated[index] = value.trim();
+      setQualifications(updated);
+    }
+    setEditingQualification(null);
+  };
+
+  const cancelEditQualification = () => {
+    setEditingQualification(null);
   };
 
   const addSkill = (skill) => {
@@ -260,39 +430,65 @@ Return ONLY the JSON object with these exact keys.`,
 
   const generateResponsibilities = async () => {
     if (!title || !description) {
-      alert("Please fill in the role title and description first to use AI generation.");
+      toast({
+        title: "Information Required",
+        description: "Please fill in the role title and description first to use AI generation.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsGeneratingResponsibilities(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Based on this job role information, generate 5-7 key responsibilities for this position:
-        
-Role Title: ${title}
-Description: ${description}
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to use AI features.",
+          variant: "destructive",
+        });
+        navigate('/signin');
+        return;
+      }
 
-Return only a JSON object with a single key 'responsibilities' which is an array of responsibility strings, nothing else. Example: {"responsibilities": ["Lead feature development", "Collaborate with team"]}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            responsibilities: {
-              type: "array",
-              items: { type: "string" }
-            }
-          },
-          required: ["responsibilities"]
-        }
+      const response = await fetch(`${API_URL}/api/job-listings/ai/generate-responsibilities`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roleTitle: title,
+          roleDescription: description
+        }),
       });
 
-      if (result && result.responsibilities && result.responsibilities.length > 0) {
-        setResponsibilities(result.responsibilities);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to generate responsibilities");
+      }
+
+      if (data.data && data.data.responsibilities && data.data.responsibilities.length > 0) {
+        setResponsibilities(data.data.responsibilities);
+        toast({
+          title: "Success!",
+          description: "Responsibilities generated successfully",
+        });
       } else {
-        alert("AI could not generate responsibilities. Please try refining your input or add them manually.");
+        toast({
+          title: "Generation Failed",
+          description: "AI could not generate responsibilities. Please try refining your input or add them manually.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error generating responsibilities:", error);
-      alert("Failed to generate responsibilities. Please try again.");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate responsibilities. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingResponsibilities(false);
     }
@@ -300,39 +496,66 @@ Return only a JSON object with a single key 'responsibilities' which is an array
 
   const generateQualifications = async () => {
     if (!title || !description) {
-      alert("Please fill in the role title and description first to use AI generation.");
+      toast({
+        title: "Information Required",
+        description: "Please fill in the role title and description first to use AI generation.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsGeneratingQualifications(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Based on this job role information, generate 5-7 key qualifications for this position:
-        
-Role Title: ${title}
-Description: ${description}
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to use AI features.",
+          variant: "destructive",
+        });
+        navigate('/signin');
+        return;
+      }
 
-Return only a JSON object with a single key 'qualifications' which is an array of qualification strings, nothing else. Example: {"qualifications": ["Currently pursuing CS degree", "Strong problem-solving skills"]}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            qualifications: {
-              type: "array",
-              items: { type: "string" }
-            }
-          },
-          required: ["qualifications"]
-        }
+      const response = await fetch(`${API_URL}/api/job-listings/ai/generate-qualifications`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roleTitle: title,
+          roleDescription: description,
+          responsibilities: responsibilities
+        }),
       });
 
-      if (result && result.qualifications && result.qualifications.length > 0) {
-        setQualifications(result.qualifications);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to generate qualifications");
+      }
+
+      if (data.data && data.data.qualifications && data.data.qualifications.length > 0) {
+        setQualifications(data.data.qualifications);
+        toast({
+          title: "Success!",
+          description: "Qualifications generated successfully",
+        });
       } else {
-        alert("AI could not generate qualifications. Please try refining your input or add them manually.");
+        toast({
+          title: "Generation Failed",
+          description: "AI could not generate qualifications. Please try refining your input or add them manually.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error generating qualifications:", error);
-      alert("Failed to generate qualifications. Please try again.");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate qualifications. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingQualifications(false);
     }
@@ -340,39 +563,66 @@ Return only a JSON object with a single key 'qualifications' which is an array o
 
   const generateSkills = async () => {
     if (!title || !description) {
-      alert("Please fill in the role title and description first to use AI generation.");
+      toast({
+        title: "Information Required",
+        description: "Please fill in the role title and description first to use AI generation.",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsGeneratingSkills(true);
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
-        prompt: `Based on this job role information, generate 8-12 specific technical and soft skills required for this position:
-        
-Role Title: ${title}
-Description: ${description}
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to use AI features.",
+          variant: "destructive",
+        });
+        navigate('/signin');
+        return;
+      }
 
-Return only a JSON object with a single key 'skills' which is an array of skill strings (like "React", "Python", "Communication"), nothing else. Example: {"skills": ["JavaScript", "Teamwork", "SQL"]}`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            skills: {
-              type: "array",
-              items: { type: "string" }
-            }
-          },
-          required: ["skills"]
-        }
+      const response = await fetch(`${API_URL}/api/job-listings/ai/generate-skills`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roleTitle: title,
+          roleDescription: description,
+          responsibilities: responsibilities
+        }),
       });
 
-      if (result && result.skills && result.skills.length > 0) {
-        setSkills(result.skills.filter(s => s.trim() !== ''));
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to generate skills");
+      }
+
+      if (data.data && data.data.skills && data.data.skills.length > 0) {
+        setSkills(data.data.skills.filter(s => s.trim() !== ''));
+        toast({
+          title: "Success!",
+          description: "Skills generated successfully",
+        });
       } else {
-        alert("AI could not generate skills. Please try refining your input or add them manually.");
+        toast({
+          title: "Generation Failed",
+          description: "AI could not generate skills. Please try refining your input or add them manually.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Error generating skills:", error);
-      alert("Failed to generate skills. Please try again.");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate skills. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsGeneratingSkills(false);
     }
@@ -380,26 +630,129 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    // Store listing data in sessionStorage to pass to AssignProjects page
-    const listingData = {
-      title,
-      description,
-      responsibilities: responsibilities.filter(r => r.trim()),
-      qualifications: qualifications.filter(q => q.trim()),
-      skills,
-      locationType,
-      location: location === "other" ? customLocation : location, 
-      startDate,
-      hoursPerWeek,
-      compensation: compensationType === "unpaid" ? "Unpaid" : compensation, 
-      compensationType,
-      salaryPeriod: compensationType === "unpaid" ? null : salaryPeriod, // Only save salaryPeriod if compensationType is not unpaid
-      equity: equity.trim() || null
-    };
-    
-    sessionStorage.setItem('pendingListing', JSON.stringify(listingData));
-    navigate('/AssignProject?mode=listing');
+
+    setIsSubmitting(true);
+
+    try {
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to create a job listing.",
+          variant: "destructive",
+        });
+        navigate('/signin');
+        return;
+      }
+
+      // Convert hoursPerWeek string range to midpoint number
+      const getHoursPerWeekNumber = (range) => {
+        const mapping = {
+          "10-15": 12.5,
+          "15-20": 17.5,
+          "20-30": 25,
+          "30-40": 35
+        };
+        return mapping[range] || 0;
+      };
+
+      // Convert locationType to match schema
+      const getLocationType = (type) => {
+        if (type === "onsite") return "in_person";
+        return type; // "remote" or "hybrid" stay the same
+      };
+
+      // Parse location string into city, state
+      const parseLocation = (locationString) => {
+        if (!locationString || locationString === "other") return null;
+        const parts = locationString.split(', ');
+        return {
+          city: parts[0] || '',
+          state: parts[1] || '',
+          country: 'United States'
+        };
+      };
+
+      // Prepare job listing data for backend API
+      const jobListingPayload = {
+        roleTitle: title,
+        roleDescription: description,
+        keyResponsibilities: responsibilities,
+        qualifications: qualifications,
+        requiredSkills: skills.map(skill => ({
+          skillName: skill,
+          proficiencyLevel: 'intermediate'
+        })),
+        locationType: getLocationType(locationType),
+        officeLocation: (locationType === "onsite" || locationType === "hybrid")
+          ? parseLocation(location === "other" ? customLocation : location)
+          : undefined,
+        startDate: startDate || undefined,
+        hoursPerWeek: getHoursPerWeekNumber(hoursPerWeek),
+        compensation: {
+          type: compensationType === "unpaid" ? "unpaid" : "paid",
+          salary: compensationType === "unpaid" ? undefined : {
+            min: parseFloat(compensation),
+            max: parseFloat(compensation),
+            currency: 'USD',
+            period: salaryPeriod === "hour" ? "hourly" : salaryPeriod === "month" ? "monthly" : "total"
+          },
+          equityOffer: equity.trim() ? {
+            hasEquity: true,
+            percentage: parseFloat(equity)
+          } : undefined
+        },
+        status: 'active', // Make listing active immediately
+        visibility: 'public'
+      };
+
+      // Determine if we're creating or updating
+      const url = isEditMode
+        ? `${API_URL}/api/job-listings/${editingListingId}`
+        : `${API_URL}/api/job-listings`;
+      const method = isEditMode ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(jobListingPayload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || `Failed to ${isEditMode ? 'update' : 'create'} job listing`);
+      }
+
+      toast({
+        title: "Success!",
+        description: `Job listing ${isEditMode ? 'updated' : 'created'} successfully.`,
+      });
+
+      // Clear sessionStorage
+      sessionStorage.removeItem('pendingListing');
+
+      // Navigate back to the job listing dashboard if editing, otherwise to employer dashboard
+      if (isEditMode) {
+        navigate(`/JobListingDashboard?id=${editingListingId}`);
+      } else {
+        navigate('/EmployerDashboard');
+      }
+
+    } catch (error) {
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} job listing:`, error);
+      toast({
+        title: "Error",
+        description: error.message || `Failed to ${isEditMode ? 'update' : 'create'} job listing. Please try again.`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Validation check for required fields
@@ -455,14 +808,22 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
             className="text-center mb-12"
           >
             <h1 className="text-5xl font-semibold text-[#0B1121] mb-4">
-              Create Job Listing
+              {isEditMode ? 'Edit Job Listing' : 'Create Job Listing'}
             </h1>
             <p className="text-xl text-[#6B7280] font-normal">
-              Tell us about the role you're hiring for
+              {isEditMode ? 'Update the details of your job listing' : 'Tell us about the role you\'re hiring for'}
             </p>
           </motion.div>
 
-          {showImportOption ? (
+          {/* Show loading state when fetching listing in edit mode */}
+          {isLoadingListing ? (
+            <div className="bg-white rounded-2xl p-12 border border-gray-200 flex items-center justify-center">
+              <div className="flex items-center gap-3">
+                <Loader2 className="w-6 h-6 animate-spin text-[#1E3A8A]" />
+                <p className="text-[#6B7280]">Loading job listing...</p>
+              </div>
+            </div>
+          ) : showImportOption && !isEditMode ? (
             /* Import-only view */
             <>
               {/* Original "Back to Dashboard" button and "Create New Listing" heading are replaced by Breadcrumbs and the unified heading above. */}
@@ -489,7 +850,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                         value={importUrl}
                         onChange={(e) => setImportUrl(e.target.value)}
                         placeholder="https://linkedin.com/jobs/..."
-                        className="h-12 rounded-xl bg-white/20 border-white/30 text-white placeholder:text-white/60 text-base mb-4"
+                        className="h-12 rounded-xl bg-white/20 border-2 border-white/30 text-white placeholder:text-white/60 text-base mb-4"
                       />
                     </div>
 
@@ -557,21 +918,23 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
             <>
               {/* Original "Back to Dashboard" button and "Create New Listing" heading are replaced by Breadcrumbs and the unified heading above. */}
               {/* The "Import Instead" button needs to be re-added below the unified heading */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="flex justify-end mb-8"
-              >
-                <Button
-                  onClick={() => setShowImportOption(true)}
-                  variant="outline"
-                  className="h-11 px-5 rounded-xl border-2 border-gray-200 hover:border-[#1E3A8A]"
+              {!isEditMode && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.1 }}
+                  className="flex justify-end mb-8"
                 >
-                  <LinkIcon className="w-4 h-4 mr-2" />
-                  Import Instead
-                </Button>
-              </motion.div>
+                  <Button
+                    onClick={() => setShowImportOption(true)}
+                    variant="outline"
+                    className="h-11 px-5 rounded-xl border-2 border-gray-200 hover:border-[#1E3A8A]"
+                  >
+                    <LinkIcon className="w-4 h-4 mr-2" />
+                    Import Instead
+                  </Button>
+                </motion.div>
+              )}
 
               <motion.form
                 onSubmit={handleSubmit}
@@ -593,7 +956,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         placeholder="e.g. Full-Stack Engineer Intern"
-                        className="h-12 rounded-xl"
+                        className="h-12 rounded-xl border-2 border-gray-200 focus:border-[#1E3A8A]"
                         required
                       />
                     </div>
@@ -606,7 +969,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Describe the role, what the intern will work on, and what they'll learn..."
-                        className="min-h-[120px] rounded-xl"
+                        className="min-h-[120px] rounded-xl border-2 border-gray-200 focus:border-[#1E3A8A]"
                         required
                       />
                     </div>
@@ -655,42 +1018,98 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                       </TooltipProvider>
                     </div>
                   </div>
-                  
-                  <div className="max-h-[250px] overflow-y-auto mb-4 pr-2">
-                    <div className="space-y-3">
-                      {responsibilities.map((resp, index) => (
-                        <div key={index} className="flex items-start gap-2">
-                          <Input
-                            value={resp}
-                            onChange={(e) => updateResponsibility(index, e.target.value)}
-                            placeholder="e.g. Build and maintain React components"
-                            className="h-12 rounded-xl flex-1"
-                          />
-                          {responsibilities.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => removeResponsibility(index)}
-                              className="h-12 w-12 rounded-xl border-2 border-gray-200"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addResponsibility}
-                    className="w-full h-12 rounded-xl border-2 border-gray-200 hover:border-[#1E3A8A]"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Responsibility
-                  </Button>
+                  <div className="space-y-4">
+                    {/* Input field with Add button */}
+                    <div className="flex items-start gap-2">
+                      <Input
+                        value={newResponsibility}
+                        onChange={(e) => setNewResponsibility(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addResponsibility();
+                          }
+                        }}
+                        placeholder="e.g. Build and maintain React components"
+                        className="h-12 rounded-xl flex-1 border-2 border-gray-200 focus:border-[#1E3A8A]"
+                      />
+                      <Button
+                        type="button"
+                        onClick={addResponsibility}
+                        disabled={!newResponsibility.trim()}
+                        className="h-12 px-6 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white rounded-xl disabled:opacity-50"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {/* Display added responsibilities as chips */}
+                    {responsibilities.length > 0 && (
+                      <div className="max-h-[250px] overflow-y-auto pr-2">
+                        <div className="space-y-2">
+                          {responsibilities.map((resp, index) => (
+                            <div key={index}>
+                              {editingResponsibility === index ? (
+                                <div className="flex items-start gap-2">
+                                  <Input
+                                    defaultValue={resp}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        saveEditResponsibility(index, e.target.value);
+                                      }
+                                    }}
+                                    placeholder="e.g. Build and maintain React components"
+                                    className="h-12 rounded-xl flex-1 border-2 border-gray-200 focus:border-[#1E3A8A]"
+                                    autoFocus
+                                  />
+                                  <Button
+                                    type="button"
+                                    onClick={(e) => saveEditResponsibility(index, e.currentTarget.previousElementSibling.value)}
+                                    className="h-12 px-4 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white rounded-xl"
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={cancelEditResponsibility}
+                                    className="h-12 px-4 rounded-xl border-2 border-gray-200"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border-2 border-gray-200">
+                                  <span className="flex-1 text-[#0B1121]">{resp}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => startEditResponsibility(index)}
+                                    className="h-8 w-8 rounded-lg hover:bg-gray-200"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeResponsibility(index)}
+                                    className="h-8 w-8 rounded-lg hover:bg-red-100 hover:text-red-600"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Qualifications */}
@@ -735,42 +1154,98 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                       </TooltipProvider>
                     </div>
                   </div>
-                  
-                  <div className="max-h-[250px] overflow-y-auto mb-4 pr-2">
-                    <div className="space-y-3">
-                      {qualifications.map((qual, index) => (
-                        <div key={index} className="flex items-start gap-2">
-                          <Input
-                            value={qual}
-                            onChange={(e) => updateQualification(index, e.target.value)}
-                            placeholder="e.g. Currently pursuing CS degree"
-                            className="h-12 rounded-xl flex-1"
-                          />
-                          {qualifications.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => removeQualification(index)}
-                              className="h-12 w-12 rounded-xl border-2 border-gray-200"
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={addQualification}
-                    className="w-full h-12 rounded-xl border-2 border-gray-200 hover:border-[#1E3A8A]"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Qualification
-                  </Button>
+                  <div className="space-y-4">
+                    {/* Input field with Add button */}
+                    <div className="flex items-start gap-2">
+                      <Input
+                        value={newQualification}
+                        onChange={(e) => setNewQualification(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addQualification();
+                          }
+                        }}
+                        placeholder="e.g. Currently pursuing CS degree"
+                        className="h-12 rounded-xl flex-1 border-2 border-gray-200 focus:border-[#1E3A8A]"
+                      />
+                      <Button
+                        type="button"
+                        onClick={addQualification}
+                        disabled={!newQualification.trim()}
+                        className="h-12 px-6 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white rounded-xl disabled:opacity-50"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+
+                    {/* Display added qualifications as chips */}
+                    {qualifications.length > 0 && (
+                      <div className="max-h-[250px] overflow-y-auto pr-2">
+                        <div className="space-y-2">
+                          {qualifications.map((qual, index) => (
+                            <div key={index}>
+                              {editingQualification === index ? (
+                                <div className="flex items-start gap-2">
+                                  <Input
+                                    defaultValue={qual}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        saveEditQualification(index, e.target.value);
+                                      }
+                                    }}
+                                    placeholder="e.g. Currently pursuing CS degree"
+                                    className="h-12 rounded-xl flex-1 border-2 border-gray-200 focus:border-[#1E3A8A]"
+                                    autoFocus
+                                  />
+                                  <Button
+                                    type="button"
+                                    onClick={(e) => saveEditQualification(index, e.currentTarget.previousElementSibling.value)}
+                                    className="h-12 px-4 bg-[#1E3A8A] hover:bg-[#1E3A8A]/90 text-white rounded-xl"
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={cancelEditQualification}
+                                    className="h-12 px-4 rounded-xl border-2 border-gray-200"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-xl border-2 border-gray-200">
+                                  <span className="flex-1 text-[#0B1121]">{qual}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => startEditQualification(index)}
+                                    className="h-8 w-8 rounded-lg hover:bg-gray-200"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeQualification(index)}
+                                    className="h-8 w-8 rounded-lg hover:bg-red-100 hover:text-red-600"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Required Skills */}
@@ -881,7 +1356,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                             }
                           }}
                           placeholder="Enter custom skill"
-                          className="h-12 rounded-xl flex-1"
+                          className="h-12 rounded-xl flex-1 border-2 border-gray-200 focus:border-[#1E3A8A]"
                           autoFocus
                         />
                         <Button
@@ -1003,7 +1478,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                               value={customLocation}
                               onChange={(e) => setCustomLocation(e.target.value)}
                               placeholder="Enter your location (e.g. London, UK)"
-                              className="h-12 rounded-xl"
+                              className="h-12 rounded-xl border-2 border-gray-200 focus:border-[#1E3A8A]"
                               required
                             />
                           </div>
@@ -1021,7 +1496,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                           type="date"
                           value={startDate}
                           onChange={(e) => setStartDate(e.target.value)}
-                          className="h-12 rounded-xl"
+                          className="h-12 rounded-xl border-2 border-gray-200 focus:border-[#1E3A8A]"
                         />
                       </div>
 
@@ -1087,7 +1562,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                                 salaryPeriod === "hour" ? "20" :
                                 salaryPeriod === "year" ? "30000" : "2500"
                               }
-                              className="h-12 rounded-xl pl-8 pr-4"
+                              className="h-12 rounded-xl pl-8 pr-4 border-2 border-gray-200 focus:border-[#1E3A8A]"
                               min="0"
                               step={salaryPeriod === "hour" ? "0.5" : "100"}
                               required
@@ -1118,7 +1593,7 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                           value={equity}
                           onChange={(e) => setEquity(e.target.value)}
                           placeholder="0.1"
-                          className="h-12 rounded-xl pr-10"
+                          className="h-12 rounded-xl pr-10 border-2 border-gray-200 focus:border-[#1E3A8A]"
                           min="0"
                           max="100"
                           step="0.01"
@@ -1161,12 +1636,15 @@ Return only a JSON object with a single key 'skills' which is an array of skill 
                     type="submit"
                     disabled={isSubmitting || !isFormValid()}
                     className="flex-1 h-14 rounded-xl font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{ 
+                    style={{
                       backgroundColor: isFormValid() ? '#FFFF00' : '#E5E5E5',
                       color: isFormValid() ? '#1E3A8A' : '#9CA3AF'
                     }}
                   >
-                    {isSubmitting ? 'Processing...' : 'Continue to Project Selection'}
+                    {isSubmitting
+                      ? (isEditMode ? 'Updating Listing...' : 'Creating Listing...')
+                      : (isEditMode ? 'Update Job Listing' : 'Create Job Listing')
+                    }
                   </Button>
                 </div>
               </motion.form>

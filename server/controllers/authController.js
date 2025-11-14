@@ -789,13 +789,6 @@ const employerSignup = async (req, res) => {
       });
     }
 
-    if (!companyName) {
-      return res.status(400).json({
-        success: false,
-        message: 'Company name is required',
-      });
-    }
-
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     const { uid, email, picture, email_verified } = decodedToken;
@@ -835,9 +828,12 @@ const employerSignup = async (req, res) => {
     }
 
     // Create company in MongoDB
+    // Use provided company name or generate a default based on email domain
+    const defaultCompanyName = companyName || `${email.split('@')[1].split('.')[0]} Company`;
+
     const company = await Company.create({
       companyId: `comp_${Date.now()}`,
-      companyName,
+      companyName: defaultCompanyName,
       companyWebsite: companyWebsite || '',
       industry: industry || '',
     });

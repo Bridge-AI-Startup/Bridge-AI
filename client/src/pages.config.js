@@ -5,6 +5,10 @@ import Onboarding from './pages/Onboarding';
 import OnboardingParse from './pages/OnboardingParse';
 import AddProjects from './pages/AddProjects';
 import CompanyPreferences from './pages/CompanyPreferences';
+import EditResume from './pages/EditResume';
+import EditProjects from './pages/EditProjects';
+import EditPreferences from './pages/EditPreferences';
+import CreateJobListing from './pages/CreateJobListing';
 import ProjectsParse from './pages/ProjectsParse';
 import PreferencesParse from './pages/PreferencesParse';
 import BookInterview from './pages/BookInterview';
@@ -59,6 +63,10 @@ export const PAGES = {
     "OnboardingParse": OnboardingParse,
     "AddProjects": AddProjects,
     "CompanyPreferences": CompanyPreferences,
+    "EditResume": EditResume,
+    "EditProjects": EditProjects,
+    "EditPreferences": EditPreferences,
+    "CreateJobListing": CreateJobListing,
     "ProjectsParse": ProjectsParse,
     "PreferencesParse": PreferencesParse,
     "BookInterview": BookInterview,

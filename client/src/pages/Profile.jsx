@@ -178,21 +178,21 @@ export default function Profile() {
       icon: FileText,
       title: "Resume / LinkedIn",
       description: "Update your experience and education automatically.",
-      route: "/Onboarding",
+      route: "/EditResume",
       completed: completionSections.resume
     },
     {
       icon: Briefcase,
       title: "Projects",
       description: "Show what you've built — upload code, links, or files.",
-      route: "/AddProjects",
+      route: "/EditProjects",
       completed: completionSections.projects
     },
     {
       icon: SettingsIcon,
       title: "Work Preferences",
       description: "Pick industries, company size, and work style.",
-      route: "/CompanyPreferences",
+      route: "/EditPreferences",
       completed: completionSections.preferences
     }
   ];

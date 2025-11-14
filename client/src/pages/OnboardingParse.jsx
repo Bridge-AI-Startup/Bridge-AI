@@ -1,21 +1,29 @@
 import React, { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 
 export default function OnboardingParse() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo; // Check if we should return somewhere
 
   useEffect(() => {
     window.scrollTo(0, 0);
     // Auto-navigate after a short delay
     const timer = setTimeout(() => {
-      navigate("/AddProjects");
+      if (returnTo === 'Profile') {
+        // Return to Profile if coming from there
+        navigate("/Profile");
+      } else {
+        // First-time onboarding - continue to next step
+        navigate("/AddProjects");
+      }
     }, 1500);
-    
+
     return () => clearTimeout(timer);
-  }, [navigate]);
+  }, [navigate, returnTo]);
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-6">

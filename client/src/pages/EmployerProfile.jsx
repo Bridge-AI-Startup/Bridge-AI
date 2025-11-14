@@ -312,7 +312,7 @@ export default function EmployerProfile() {
                   <div className="relative">
                     <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#1E3A8A] to-[#3B82F6] flex items-center justify-center overflow-hidden">
                       {logoUrl ? (
-                        <img src={logoUrl} alt="Company Logo" className="w-full h-full object-cover" />
+                        <img src={`${API_URL}${logoUrl}`} alt="Company Logo" className="w-full h-full object-cover" />
                       ) : (
                         <Building2 className="w-10 h-10 text-white" />
                       )}

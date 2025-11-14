@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import PreferencesHeader from "../components/preferences/PreferencesHeader";
@@ -13,11 +12,9 @@ import { useToast } from "@/components/ui/use-toast";
 import { motion } from "framer-motion";
 import { API_URL } from "@/config";
 
-export default function CompanyPreferences() {
+export default function EditPreferences() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
-  const from = location.state?.from; // Track where we came from
 
   const [preferences, setPreferences] = useState({
     companyStages: [],
@@ -29,15 +26,13 @@ export default function CompanyPreferences() {
 
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    loadPreferences();
-  }, []);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        navigate('/StudentSignIn');
+        return;
+      }
 
       const response = await fetch(`${API_URL}/api/onboarding/status`, {
         headers: {
@@ -46,6 +41,21 @@ export default function CompanyPreferences() {
       });
 
       const data = await response.json();
+
+      // Handle authentication errors
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again",
+            variant: "destructive"
+          });
+          navigate('/StudentSignIn');
+          return;
+        }
+        throw new Error(data.message || 'Failed to load data');
+      }
+
       if (data.success && data.data.user && data.data.user.jobPreferences) {
         const prefs = data.data.user.jobPreferences;
         setPreferences({
@@ -58,8 +68,18 @@ export default function CompanyPreferences() {
       }
     } catch (error) {
       console.error('Error loading preferences:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to load your information',
+        variant: "destructive"
+      });
     }
-  };
+  }, [navigate, toast]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    loadPreferences();
+  }, [loadPreferences]);
 
   const hasAllSelections = () => {
     return (
@@ -150,14 +170,9 @@ export default function CompanyPreferences() {
 
       setIsSaving(false);
 
+      // Always return to Profile
       setTimeout(() => {
-        if (from === 'Profile') {
-          // If coming from Profile, go back to Profile with updated state
-          navigate("/PreferencesParse", { state: { returnTo: 'Profile' } });
-        } else {
-          // First-time onboarding - continue to processing page
-          navigate("/PreferencesParse");
-        }
+        navigate("/Profile");
       }, 500);
     } catch (error) {
       console.error('Preferences save error:', error);
@@ -171,13 +186,7 @@ export default function CompanyPreferences() {
   };
 
   const handleBack = () => {
-    if (from === 'Profile') {
-      // If coming from Profile, go back to Profile
-      navigate("/Profile");
-    } else {
-      // First-time onboarding - go back to previous step
-      navigate("/AddProjects");
-    }
+    navigate("/Profile");
   };
 
   return (
@@ -186,7 +195,10 @@ export default function CompanyPreferences() {
 
       <div className="pt-24 pb-32 px-6">
         <div className="max-w-4xl mx-auto">
-          {from === 'Profile' && <Breadcrumbs from={from} currentPage="Preferences" />}
+          <Breadcrumbs items={[
+            { label: "Profile", path: "Profile" },
+            { label: "Work Preferences" }
+          ]} />
           <PreferencesHeader />
 
           <div className="space-y-8">

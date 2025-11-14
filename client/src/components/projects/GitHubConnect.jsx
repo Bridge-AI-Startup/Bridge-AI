@@ -1,15 +1,25 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Github, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function GitHubConnect({ onReposImported }) {
+export default function GitHubConnect({ onReposImported, initialGithubUrl = "" }) {
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const [githubUsername, setGithubUsername] = useState("");
+  const [isConnected, setIsConnected] = useState(!!initialGithubUrl);
+  const [githubUsername, setGithubUsername] = useState(
+    initialGithubUrl ? initialGithubUrl.replace('https://github.com/', '') : ""
+  );
   const [error, setError] = useState("");
   const [repoCount, setRepoCount] = useState(0);
+
+  // Update state when initialGithubUrl changes (loaded from API)
+  useEffect(() => {
+    if (initialGithubUrl) {
+      setIsConnected(true);
+      setGithubUsername(initialGithubUrl.replace('https://github.com/', ''));
+    }
+  }, [initialGithubUrl]);
 
   const handleConnect = async () => {
     if (!githubUsername.trim()) {
@@ -106,12 +116,31 @@ export default function GitHubConnect({ onReposImported }) {
           </h3>
           <p className="text-sm text-[#6B7280] mb-4 font-normal">
             {isConnected
-              ? `${repoCount} repositories imported successfully`
+              ? repoCount > 0
+                ? `${repoCount} repositories imported successfully`
+                : `Connected to github.com/${githubUsername}`
               : "Enter your GitHub username to import your public repositories"
             }
           </p>
 
-          {!isConnected && (
+          {isConnected ? (
+            <div className="space-y-3">
+              <Input
+                type="text"
+                value={githubUsername}
+                readOnly
+                placeholder="GitHub username"
+                className="h-10 rounded-xl bg-gray-50 cursor-not-allowed"
+              />
+              <Button
+                onClick={() => setIsConnected(false)}
+                className="bg-[#0B1121] hover:bg-[#1E3A8A] text-white h-10 px-6 rounded-xl"
+              >
+                <Github className="w-4 h-4 mr-2" />
+                Edit Connection
+              </Button>
+            </div>
+          ) : (
             <div className="space-y-3">
               <Input
                 type="text"

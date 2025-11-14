@@ -5,8 +5,8 @@ import { ArrowRight, Mail, Lock, User, Building2, Globe, Briefcase } from "lucid
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API_URL } from "@/config";
-import { signUpWithEmail, signUpWithGoogle, deleteFirebaseUser } from "@/lib/auth";
+import { signUpWithEmail, signUpWithGoogle } from "@/lib/auth";
+import { employerSignUp, storeAuthData } from "@/services/authService";
 
 export default function EmployerSignup() {
   const navigate = useNavigate();
@@ -44,56 +44,27 @@ export default function EmployerSignup() {
       return;
     }
 
-    if (!inviteToken && !companyName) {
-      setError("Company name is required");
-      return;
-    }
-
     setIsSubmitting(true);
 
-    let firebaseUser = null;
     try {
       // Step 1: Create Firebase user and get ID token
-      const { idToken, user } = await signUpWithEmail(workEmail.toLowerCase().trim(), password);
-      firebaseUser = user;
+      const idToken = await signUpWithEmail(workEmail.toLowerCase().trim(), password);
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/employer/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          idToken,
-          firstName,
-          lastName,
-          companyName,
-          companyWebsite,
-          industry,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        throw new Error(data.message || "Signup failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await employerSignUp(
+        idToken,
+        firstName,
+        lastName,
+        companyName,
+        companyWebsite,
+        industry
+      );
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'employer');
-        localStorage.setItem('role', data.data.role || 'employer');
-        if (data.data.company) {
-          localStorage.setItem('company', JSON.stringify(data.data.company));
-        }
+        // Step 3: Store auth data
+        storeAuthData(data, 'employer');
 
-        // Navigate based on invite status
+        // Step 4: Navigate based on invite status
         if (inviteToken) {
           navigate("/EmployerDashboard");
         } else {
@@ -103,11 +74,7 @@ export default function EmployerSignup() {
     } catch (error) {
       console.error("Signup error:", error);
 
-      // If we created a Firebase user but backend failed, clean it up
-      if (firebaseUser && !error.code?.startsWith('auth/')) {
-        await deleteFirebaseUser(firebaseUser);
-      }
-
+      // Handle Firebase errors
       if (error.code === 'auth/email-already-in-use') {
         setError("This email is already registered. Please sign in instead.");
       } else if (error.code === 'auth/invalid-email') {
@@ -115,6 +82,7 @@ export default function EmployerSignup() {
       } else if (error.code === 'auth/weak-password') {
         setError("Password is too weak. Please use a stronger password.");
       } else {
+        // Handle backend errors
         setError(error.message || "Signup failed. Please try again.");
       }
     } finally {
@@ -124,59 +92,28 @@ export default function EmployerSignup() {
 
   const handleGoogleSignup = async () => {
     setError("");
-
-    // Validate required fields before Google signup
-    if (!inviteToken && !companyName) {
-      setError("Please enter your company name before signing up with Google.");
-      return;
-    }
-
     setIsSubmitting(true);
 
-    let firebaseUser = null;
     try {
       // Step 1: Sign in with Google and get ID token
-      const { idToken, user, photoURL } = await signUpWithGoogle();
-      firebaseUser = user;
+      const { idToken, photoURL } = await signUpWithGoogle();
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/employer/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          idToken,
-          firstName,
-          lastName,
-          companyName,
-          companyWebsite,
-          industry,
-          photoURL,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        throw new Error(data.message || "Google sign-up failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await employerSignUp(
+        idToken,
+        firstName,
+        lastName,
+        companyName,
+        companyWebsite,
+        industry,
+        photoURL
+      );
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'employer');
-        localStorage.setItem('role', data.data.role || 'employer');
-        if (data.data.company) {
-          localStorage.setItem('company', JSON.stringify(data.data.company));
-        }
+        // Step 3: Store auth data
+        storeAuthData(data, 'employer');
 
-        // Navigate based on invite status
+        // Step 4: Navigate based on invite status
         if (inviteToken) {
           navigate("/EmployerDashboard");
         } else {
@@ -186,16 +123,13 @@ export default function EmployerSignup() {
     } catch (error) {
       console.error("Google signup error:", error);
 
-      // If we created a Firebase user but backend failed, clean it up
-      if (firebaseUser && !error.code?.startsWith('auth/')) {
-        await deleteFirebaseUser(firebaseUser);
-      }
-
+      // Handle Firebase popup errors
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-up cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {
         setError("Pop-up blocked. Please allow pop-ups for this site.");
       } else {
+        // Handle backend errors
         setError(error.message || "Google sign-up failed. Please try again.");
       }
     } finally {
@@ -204,7 +138,7 @@ export default function EmployerSignup() {
   };
 
   const canSubmit = firstName && workEmail && password && confirmPassword &&
-                    password === confirmPassword && (!inviteToken ? companyName : true);
+                    password === confirmPassword;
 
   return (
     <div className="min-h-screen bg-white">
@@ -322,14 +256,13 @@ export default function EmployerSignup() {
                 <div>
                   <label className="block text-sm font-semibold text-[#0B1121] mb-2">
                     <Building2 className="w-4 h-4 inline mr-1" />
-                    Company Name *
+                    Company Name
                   </label>
                   <Input
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     placeholder="Acme Inc."
                     className="h-12 rounded-xl"
-                    required
                   />
                 </div>
 

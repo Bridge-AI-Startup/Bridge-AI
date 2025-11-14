@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import React, { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import OnboardingHeader from "../components/onboarding/OnboardingHeader";
@@ -9,22 +9,14 @@ import OnboardingActions from "../components/onboarding/OnboardingActions";
 import { API_URL } from "@/config";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function Onboarding() {
+export default function EditResume() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { toast } = useToast();
-  const from = location.state?.from; // Track where we came from
   const [resumeFile, setResumeFile] = useState(null);
   const [linkedinUrl, setLinkedinUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-    // Load existing onboarding data
-    loadOnboardingStatus();
-  }, []);
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -51,10 +43,13 @@ export default function Onboarding() {
     setIsDragging(false);
   };
 
-  const loadOnboardingStatus = async () => {
+  const loadOnboardingStatus = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
-      if (!token) return;
+      if (!token) {
+        navigate('/StudentSignIn');
+        return;
+      }
 
       const response = await fetch(`${API_URL}/api/onboarding/status`, {
         headers: {
@@ -63,16 +58,40 @@ export default function Onboarding() {
       });
 
       const data = await response.json();
+
+      // Handle authentication errors
+      if (!response.ok) {
+        if (response.status === 401) {
+          toast({
+            title: "Session expired",
+            description: "Please sign in again",
+            variant: "destructive"
+          });
+          navigate('/StudentSignIn');
+          return;
+        }
+        throw new Error(data.message || 'Failed to load data');
+      }
+
       if (data.success && data.data.user) {
-        // Pre-fill LinkedIn URL if already exists
         if (data.data.user.linkedinUrl) {
           setLinkedinUrl(data.data.user.linkedinUrl);
         }
       }
     } catch (error) {
       console.error('Error loading onboarding status:', error);
+      toast({
+        title: "Error",
+        description: error.message || 'Failed to load your information',
+        variant: "destructive"
+      });
     }
-  };
+  }, [navigate, toast]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    loadOnboardingStatus();
+  }, [loadOnboardingStatus]);
 
   const isLinkedinValid = linkedinUrl.includes("linkedin.com/in/");
   const canContinue = resumeFile !== null || isLinkedinValid;
@@ -134,20 +153,14 @@ export default function Onboarding() {
         });
       }
 
-      // Navigate to parsing page with state to know where to return
-      if (from === 'Profile') {
-        // If coming from Profile, go back to Profile after parsing
-        navigate("/OnboardingParse", { state: { returnTo: 'Profile' } });
-      } else {
-        // First-time onboarding - continue to next step
-        navigate("/OnboardingParse");
-      }
+      // Always return to Profile
+      navigate("/Profile");
     } catch (error) {
-      console.error('Onboarding error:', error);
-      setError(error.message || 'Failed to save onboarding data');
+      console.error('Edit resume error:', error);
+      setError(error.message || 'Failed to save resume data');
       toast({
         title: "Error",
-        description: error.message || 'Failed to save onboarding data',
+        description: error.message || 'Failed to save resume data',
         variant: "destructive"
       });
     } finally {
@@ -161,7 +174,10 @@ export default function Onboarding() {
 
       <div className="pt-32 pb-16 px-6">
         <div className="max-w-[720px] mx-auto">
-          {from === 'Profile' && <Breadcrumbs from={from} />}
+          <Breadcrumbs items={[
+            { label: "Profile", path: "Profile" },
+            { label: "Resume & LinkedIn" }
+          ]} />
           <OnboardingHeader />
 
           <div className="grid md:grid-cols-2 gap-6 mb-8">

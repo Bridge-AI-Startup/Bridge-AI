@@ -13,14 +13,18 @@ import AssessmentModal from "../components/review-assessments/AssessmentModal";
 import BridgeAIButton from "../components/bridge-ai/BridgeAIButton";
 import BridgeAIPanel from "../components/bridge-ai/BridgeAIPanel";
 import CandidateModal from "../components/candidate-tracking/CandidateModal";
+import { API_URL } from "@/config";
 
 export default function JobListingDashboard() {
   const navigate = useNavigate();
   const location = useLocation(); // Using useLocation instead of useSearchParams
   const urlParams = new URLSearchParams(location.search);
-  const listingId = urlParams.get("id") || "fullstack-engineer"; // Renamed jobId to listingId and added default
+  const listingId = urlParams.get("id"); // Get ID from URL params
 
   // State
+  const [jobListing, setJobListing] = useState(null);
+  const [isLoadingListing, setIsLoadingListing] = useState(true);
+  const [listingError, setListingError] = useState(null);
   const [selectedAssessmentForReview, setSelectedAssessmentForReview] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -28,15 +32,57 @@ export default function JobListingDashboard() {
   const [selectedCandidateStage, setSelectedCandidateStage] = useState(null);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState(null);
 
+  // Fetch job listing data
+  useEffect(() => {
+    const fetchJobListing = async () => {
+      if (!listingId) {
+        setListingError("No job listing ID provided");
+        setIsLoadingListing(false);
+        return;
+      }
+
+      try {
+        setIsLoadingListing(true);
+        setListingError(null);
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/signin');
+          return;
+        }
+
+        const response = await fetch(`${API_URL}/api/job-listings/${listingId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch job listing');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setJobListing(data.data.jobListing);
+        } else {
+          throw new Error(data.message || 'Failed to fetch job listing');
+        }
+      } catch (error) {
+        console.error('Error fetching job listing:', error);
+        setListingError(error.message);
+      } finally {
+        setIsLoadingListing(false);
+      }
+    };
+
+    fetchJobListing();
+  }, [listingId, navigate]);
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
-
-  // Job listing data
-  const jobListing = {
-    title: "Full-Stack Engineer Intern",
-    location: "New York, NY",
-  };
 
   // Pipeline stages configuration
   const stages = [
@@ -280,9 +326,71 @@ export default function JobListingDashboard() {
     }
   };
 
-  // Bridge AI context
+  // Format location from job listing
+  const formatLocation = (listing) => {
+    if (!listing) return "Location not specified";
+
+    if (listing.officeLocation && listing.officeLocation.city) {
+      const { city, state } = listing.officeLocation;
+      return `${city}${state ? `, ${state}` : ''}`;
+    }
+
+    // Format locationType
+    const locationTypes = {
+      'remote': 'Remote',
+      'hybrid': 'Hybrid',
+      'in_person': 'On-site'
+    };
+
+    return locationTypes[listing.locationType] || listing.locationType;
+  };
+
+  const breadcrumbItems = [
+    { label: "Dashboard", path: "EmployerDashboard" },
+    { label: jobListing?.roleTitle || "Job Listing" } // Using jobListing.title for the dynamic breadcrumb
+  ];
+
+  // Show loading state
+  if (isLoadingListing) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header currentPage="EmployerDashboard" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white rounded-2xl p-12 border border-gray-200 flex items-center justify-center">
+              <p className="text-[#6B7280]">Loading job listing...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (listingError || !jobListing) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header currentPage="EmployerDashboard" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="bg-white rounded-2xl p-12 border border-red-200 flex flex-col items-center justify-center gap-4">
+              <p className="text-red-600">Error: {listingError || "Job listing not found"}</p>
+              <Button
+                onClick={() => navigate('/EmployerDashboard')}
+                className="h-11 px-6 rounded-xl bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
+              >
+                Back to Dashboard
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Bridge AI context - only create after jobListing is loaded
   const aiContext = {
-    roleTitle: jobListing.title,
+    roleTitle: jobListing.roleTitle,
     stage: "Pipeline Overview",
     totals: {
       candidates: totalApplicants,
@@ -292,11 +400,6 @@ export default function JobListingDashboard() {
     },
     candidates: []
   };
-
-  const breadcrumbItems = [
-    { label: "Dashboard", path: "EmployerDashboard" },
-    { label: jobListing.title } // Using jobListing.title for the dynamic breadcrumb
-  ];
 
   return (
     <motion.div
@@ -323,14 +426,14 @@ export default function JobListingDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-semibold text-[#0B1121] mb-1">
-                  {jobListing.title}
+                  {jobListing.roleTitle}
                 </h1>
                 <p className="text-base text-[#6B7280] font-normal">
-                  {jobListing.location} • {totalApplicants} candidates in pipeline
+                  {formatLocation(jobListing)} • {totalApplicants} candidates in pipeline
                 </p>
               </div>
               <Button
-                onClick={() => navigate(`/EditListing?id=${listingId}`)} // Changed jobId to listingId
+                onClick={() => navigate(`/CreateListing?id=${listingId}`)} // Navigate to CreateListing for editing
                 variant="outline"
                 className="h-11 px-5 rounded-xl border border-gray-300 hover:border-[#1E3A8A] hover:shadow-sm transition-all"
               >

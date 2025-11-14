@@ -1,45 +1,32 @@
 // Firebase Authentication Helper Functions
 import {
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
-  deleteUser
 } from 'firebase/auth';
 import { auth } from './firebase';
 
 /**
  * Sign up with email and password
- * @returns {Promise<{idToken: string, user: User}>} Firebase ID token and user object
+ * @returns {Promise<string>} Firebase ID token
  */
 export const signUpWithEmail = async (email, password) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const idToken = await userCredential.user.getIdToken();
-  return { idToken, user: userCredential.user };
+  return idToken;
 };
 
 /**
  * Sign up with Google OAuth
- * @returns {Promise<{idToken: string, user: User, photoURL: string|null}>} Firebase ID token, user object, and photo URL
+ * @returns {Promise<{idToken: string, photoURL: string|null}>} Firebase ID token and photo URL
  */
 export const signUpWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
   const userCredential = await signInWithPopup(auth, provider);
   const idToken = await userCredential.user.getIdToken();
   const photoURL = userCredential.user.photoURL;
-  return { idToken, user: userCredential.user, photoURL };
-};
-
-/**
- * Delete a Firebase user (cleanup on signup failure)
- * @param {User} user - Firebase user object to delete
- */
-export const deleteFirebaseUser = async (user) => {
-  try {
-    await deleteUser(user);
-  } catch (error) {
-    console.error('Error deleting Firebase user:', error);
-    // Don't throw - we want to show the original error to the user
-  }
+  return { idToken, photoURL };
 };
 
 /**
@@ -47,7 +34,6 @@ export const deleteFirebaseUser = async (user) => {
  * @returns {Promise<string>} Firebase ID token
  */
 export const signInWithEmail = async (email, password) => {
-  const { signInWithEmailAndPassword } = await import('firebase/auth');
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   const idToken = await userCredential.user.getIdToken();
   return idToken;
@@ -55,13 +41,19 @@ export const signInWithEmail = async (email, password) => {
 
 /**
  * Sign in with Google OAuth
- * @returns {Promise<{idToken: string, photoURL: string|null, user: User}>} Firebase ID token, photo URL, and user object
+ * @returns {Promise<{idToken: string, photoURL: string|null}>} Firebase ID token and photo URL
  */
 export const signInWithGoogle = async () => {
   const provider = new GoogleAuthProvider();
-  const { signInWithPopup } = await import('firebase/auth');
   const userCredential = await signInWithPopup(auth, provider);
   const idToken = await userCredential.user.getIdToken();
   const photoURL = userCredential.user.photoURL;
-  return { idToken, photoURL, user: userCredential.user };
+  return { idToken, photoURL };
+};
+
+/**
+ * Sign out from Firebase
+ */
+export const signOut = async () => {
+  await auth.signOut();
 };

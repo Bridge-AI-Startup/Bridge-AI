@@ -6,8 +6,8 @@ import { ArrowRight, Mail, Lock, User, GraduationCap } from "lucide-react";
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API_URL } from "@/config";
-import { signUpWithEmail, signUpWithGoogle, deleteFirebaseUser } from "@/lib/auth";
+import { signUpWithEmail, signUpWithGoogle } from "@/lib/auth";
+import { studentSignUp, storeAuthData } from "@/services/authService";
 
 export default function StudentSignup() {
   const navigate = useNavigate();
@@ -44,53 +44,28 @@ export default function StudentSignup() {
 
     setIsSubmitting(true);
 
-    let firebaseUser = null;
     try {
       // Step 1: Create Firebase user and get ID token
-      const { idToken, user } = await signUpWithEmail(email.toLowerCase().trim(), password);
-      firebaseUser = user;
+      const idToken = await signUpWithEmail(email.toLowerCase().trim(), password);
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/student/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          idToken,
-          name: fullName,
-          university: university || email.split('@')[1].split('.')[0].toUpperCase(),
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        throw new Error(data.message || "Signup failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await studentSignUp(
+        idToken,
+        fullName,
+        university || email.split('@')[1].split('.')[0].toUpperCase()
+      );
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'student');
-        localStorage.setItem('role', data.data.role || 'user');
+        // Step 3: Store auth data
+        storeAuthData(data, 'student');
 
-        // Navigate to onboarding
+        // Step 4: Navigate to onboarding
         navigate("/Onboarding");
       }
     } catch (error) {
       console.error("Signup error:", error);
 
-      // If we created a Firebase user but backend failed, clean it up
-      if (firebaseUser && !error.code?.startsWith('auth/')) {
-        await deleteFirebaseUser(firebaseUser);
-      }
-
+      // Handle Firebase errors
       if (error.code === 'auth/email-already-in-use') {
         setError("This email is already registered. Please sign in instead.");
       } else if (error.code === 'auth/invalid-email') {
@@ -98,7 +73,8 @@ export default function StudentSignup() {
       } else if (error.code === 'auth/weak-password') {
         setError("Password is too weak. Please use a stronger password.");
       } else {
-        setError("Signup failed. Please try again.");
+        // Handle backend errors
+        setError(error.message || "Signup failed. Please try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -109,60 +85,36 @@ export default function StudentSignup() {
     setError("");
     setIsSubmitting(true);
 
-    let firebaseUser = null;
     try {
       // Step 1: Sign in with Google and get ID token
-      const { idToken, user, photoURL } = await signUpWithGoogle();
-      firebaseUser = user;
+      const { idToken, photoURL } = await signUpWithGoogle();
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/student/signup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          idToken,
-          name: fullName,
-          university: university || null,
-          photoURL,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend failed - delete the Firebase user
-        if (firebaseUser) {
-          await deleteFirebaseUser(firebaseUser);
-        }
-        throw new Error(data.message || "Google sign-up failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await studentSignUp(
+        idToken,
+        fullName,
+        university || null,
+        photoURL
+      );
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'student');
-        localStorage.setItem('role', data.data.role || 'user');
+        // Step 3: Store auth data
+        storeAuthData(data, 'student');
 
-        // Navigate to onboarding
+        // Step 4: Navigate to onboarding
         navigate("/Onboarding");
       }
     } catch (error) {
       console.error("Google signup error:", error);
 
-      // If we created a Firebase user but backend failed, clean it up
-      if (firebaseUser && !error.code?.startsWith('auth/')) {
-        await deleteFirebaseUser(firebaseUser);
-      }
-
+      // Handle Firebase popup errors
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-up cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {
         setError("Pop-up blocked. Please allow pop-ups for this site.");
       } else {
-        setError("Google sign-up failed. Please try again.");
+        // Handle backend errors
+        setError(error.message || "Google sign-up failed. Please try again.");
       }
     } finally {
       setIsSubmitting(false);

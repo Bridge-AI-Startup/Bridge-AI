@@ -2,24 +2,29 @@ import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogOut } from 'lucide-react';
+import { clearAuthData } from '@/services/authService';
+import { signOut } from '@/lib/auth';
 
 export default function Logout() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Clear all auth data
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('userType');
-    localStorage.removeItem('role');
-    localStorage.removeItem('company');
+    const performLogout = async () => {
+      // Clear all auth data from localStorage
+      clearAuthData();
 
-    // Redirect to home after a short delay
-    const timer = setTimeout(() => {
-      navigate('/');
-    }, 2000);
+      // Sign out from Firebase
+      await signOut();
 
-    return () => clearTimeout(timer);
+      // Redirect to home after a short delay
+      const timer = setTimeout(() => {
+        navigate('/');
+      }, 2000);
+
+      return () => clearTimeout(timer);
+    };
+
+    performLogout();
   }, [navigate]);
 
   return (

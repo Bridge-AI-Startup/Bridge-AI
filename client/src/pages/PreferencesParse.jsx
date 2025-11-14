@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import ParseHeader from "../components/onboarding/ParseHeader";
 import ProgressMilestones from "../components/onboarding/ProgressMilestones";
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 
 export default function PreferencesParse() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = location.state?.returnTo; // Check if we should return somewhere
   const [progress, setProgress] = useState(0);
   const [currentMilestone, setCurrentMilestone] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
@@ -63,7 +65,13 @@ export default function PreferencesParse() {
   }, []);
 
   const handleShowMatches = () => {
-    navigate("/StudentDashboard");
+    if (returnTo === 'Profile') {
+      // Return to Profile if coming from there
+      navigate("/Profile");
+    } else {
+      // First-time onboarding - show dashboard
+      navigate("/StudentDashboard");
+    }
   };
 
   return (

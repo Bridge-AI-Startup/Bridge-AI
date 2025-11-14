@@ -5,9 +5,8 @@ import { ArrowRight, Mail, Lock, User } from "lucide-react";
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API_URL } from "@/config";
 import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
-import { auth } from "@/lib/firebase";
+import { studentSignIn, storeAuthData } from "@/services/authService";
 
 export default function StudentSignIn() {
   const navigate = useNavigate();
@@ -26,36 +25,23 @@ export default function StudentSignIn() {
     setIsSubmitting(true);
 
     try {
-      // Step 1: Sign in with Firebase and get ID token
+      // Step 1: Get Firebase ID token
       const idToken = await signInWithEmail(email.toLowerCase().trim(), password);
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/student/signin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ idToken }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Sign-in failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await studentSignIn(idToken);
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'student');
-        localStorage.setItem('role', data.data.role || 'user');
+        // Step 3: Store auth data
+        storeAuthData(data, 'student');
 
-        // Navigate to dashboard
+        // Step 4: Navigate to dashboard
         navigate("/StudentDashboard");
       }
     } catch (error) {
       console.error("Sign in error:", error);
+
+      // Handle Firebase errors
       if (error.code === 'auth/invalid-credential') {
         setError("Incorrect email address or password. Please try again.");
       } else if (error.code === 'auth/user-disabled') {
@@ -63,6 +49,7 @@ export default function StudentSignIn() {
       } else if (error.code === 'auth/too-many-requests') {
         setError("Too many attempts. Please try again later.");
       } else {
+        // Handle backend errors
         setError(error.message || "Sign-in failed. Please try again.");
       }
     } finally {
@@ -74,57 +61,30 @@ export default function StudentSignIn() {
     setError("");
     setIsSubmitting(true);
 
-    let firebaseUser = null;
     try {
-      // Step 1: Sign in with Google and get ID token
-      const { idToken, photoURL, user } = await signInWithGoogle();
-      firebaseUser = user;
+      // Step 1: Get Firebase ID token and photo
+      const { idToken, photoURL } = await signInWithGoogle();
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/student/signin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ idToken, photoURL }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Backend rejected - sign out from Firebase
-        if (firebaseUser) {
-          await auth.signOut();
-        }
-        throw new Error(data.message || "Google sign-in failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await studentSignIn(idToken, photoURL);
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'student');
-        localStorage.setItem('role', data.data.role || 'user');
+        // Step 3: Store auth data
+        storeAuthData(data, 'student');
 
-        // Navigate to dashboard
+        // Step 4: Navigate to dashboard
         navigate("/StudentDashboard");
       }
     } catch (error) {
       console.error("Google sign in error:", error);
-      // If backend failed, make sure we're signed out from Firebase
-      if (firebaseUser && !error.code?.startsWith('auth/')) {
-        try {
-          await auth.signOut();
-        } catch (signOutError) {
-          console.error("Error signing out from Firebase:", signOutError);
-        }
-      }
 
+      // Handle Firebase popup errors
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-in cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {
         setError("Pop-up blocked. Please allow pop-ups for this site.");
       } else {
+        // Handle backend errors
         setError(error.message || "Google sign-in failed. Please try again.");
       }
     } finally {
@@ -137,7 +97,7 @@ export default function StudentSignIn() {
   return (
     <div className="min-h-screen bg-white">
       <Header currentPage="StudentSignIn" />
-      
+
       <div className="pt-32 pb-16 px-6">
         <div className="max-w-md mx-auto">
           <motion.div
@@ -244,7 +204,7 @@ export default function StudentSignIn() {
                 type="submit"
                 disabled={!canSubmit || isSubmitting}
                 className="w-full h-12 text-base font-medium rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ 
+                style={{
                   backgroundColor: canSubmit ? '#FFFF00' : '#E5E5E5',
                   color: canSubmit ? '#1E3A8A' : '#9CA3AF'
                 }}
@@ -260,8 +220,8 @@ export default function StudentSignIn() {
 
               <p className="text-center text-sm text-[#6B7280] font-normal">
                 Don't have an account?{" "}
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => navigate("/StudentSignup")}
                   className="text-[#1E3A8A] font-semibold hover:underline"
                 >

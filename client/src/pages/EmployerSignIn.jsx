@@ -5,9 +5,8 @@ import { ArrowRight, Mail, Lock, Building2 } from "lucide-react";
 import Header from "../components/navigation/Header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { API_URL } from "@/config";
 import { signInWithEmail, signInWithGoogle } from "@/lib/auth";
-import { auth } from "@/lib/firebase";
+import { employerSignIn, storeAuthData } from "@/services/authService";
 
 export default function EmployerSignIn() {
   const navigate = useNavigate();
@@ -26,39 +25,23 @@ export default function EmployerSignIn() {
     setIsSubmitting(true);
 
     try {
-      // Step 1: Sign in with Firebase and get ID token
+      // Step 1: Get Firebase ID token
       const idToken = await signInWithEmail(email.toLowerCase().trim(), password);
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/employer/signin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ idToken }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Sign-in failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await employerSignIn(idToken);
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'employer');
-        localStorage.setItem('role', data.data.role || 'employer');
-        if (data.data.company) {
-          localStorage.setItem('company', JSON.stringify(data.data.company));
-        }
+        // Step 3: Store auth data
+        storeAuthData(data, 'employer');
 
-        // Navigate to dashboard
+        // Step 4: Navigate to dashboard
         navigate("/EmployerDashboard");
       }
     } catch (error) {
       console.error("Sign in error:", error);
+
+      // Handle Firebase errors
       if (error.code === 'auth/invalid-credential') {
         setError("Incorrect email address or password. Please try again.");
       } else if (error.code === 'auth/user-disabled') {
@@ -66,6 +49,7 @@ export default function EmployerSignIn() {
       } else if (error.code === 'auth/too-many-requests') {
         setError("Too many attempts. Please try again later.");
       } else {
+        // Handle backend errors
         setError(error.message || "Sign-in failed. Please try again.");
       }
     } finally {
@@ -78,45 +62,30 @@ export default function EmployerSignIn() {
     setIsSubmitting(true);
 
     try {
-      // Step 1: Sign in with Google and get ID token
+      // Step 1: Get Firebase ID token and photo
       const { idToken, photoURL } = await signInWithGoogle();
 
-      // Step 2: Send ID token to backend
-      const response = await fetch(`${API_URL}/api/auth/employer/signin`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ idToken, photoURL }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Google sign-in failed. Please try again.");
-      }
+      // Step 2: Send to backend for verification and JWT generation
+      const data = await employerSignIn(idToken, photoURL);
 
       if (data.success) {
-        // Store the JWT token and user data
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
-        localStorage.setItem('userType', 'employer');
-        localStorage.setItem('role', data.data.role || 'employer');
-        if (data.data.company) {
-          localStorage.setItem('company', JSON.stringify(data.data.company));
-        }
+        // Step 3: Store auth data
+        storeAuthData(data, 'employer');
 
-        // Navigate to dashboard
+        // Step 4: Navigate to dashboard
         navigate("/EmployerDashboard");
       }
     } catch (error) {
       console.error("Google sign in error:", error);
+
+      // Handle Firebase popup errors
       if (error.code === 'auth/popup-closed-by-user') {
         setError("Sign-in cancelled. Please try again.");
       } else if (error.code === 'auth/popup-blocked') {
         setError("Pop-up blocked. Please allow pop-ups for this site.");
       } else {
-        setError("Google sign-in failed. Please try again.");
+        // Handle backend errors
+        setError(error.message || "Google sign-in failed. Please try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -251,8 +220,8 @@ export default function EmployerSignIn() {
 
               <p className="text-center text-sm text-[#6B7280] font-normal">
                 Don't have an account?{" "}
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => navigate("/EmployerSignup")}
                   className="text-[#1E3A8A] font-semibold hover:underline"
                 >

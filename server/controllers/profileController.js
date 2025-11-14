@@ -23,7 +23,7 @@ const getStudentProfile = async (req, res) => {
     // Calculate profile completion
     const completionSections = {
       resume: !!(user.resume && user.resume.fileUrl),
-      projects: !!(user.projects && user.projects.length > 0),
+      projects: !!((user.projects && user.projects.length > 0) || user.githubUrl),
       preferences: !!(
         user.jobPreferences &&
         user.jobPreferences.industries &&
