@@ -25,8 +25,11 @@ export default function StudentApplicationModal({ application, onClose, onNext, 
     navigate("/StartAssessment", {
       state: {
         from: "StudentPipeline",
-        companyName: application.company,
-        jobRole: application.role
+        companyName: application.name,
+        jobRole: application.role,
+        assessmentResultId: application.assessmentResultId,
+        assessmentId: application.assessmentId,
+        jobListingId: application.jobListingId
       }
     });
     onClose();
@@ -36,8 +39,11 @@ export default function StudentApplicationModal({ application, onClose, onNext, 
     navigate("/TakeAssessment", {
       state: {
         from: "StudentPipeline",
-        companyName: application.company,
-        jobRole: application.role
+        companyName: application.name,
+        jobRole: application.role,
+        assessmentResultId: application.assessmentResultId,
+        assessmentId: application.assessmentId,
+        jobListingId: application.jobListingId
       }
     });
     onClose();

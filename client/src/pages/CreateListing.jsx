@@ -736,11 +736,17 @@ export default function CreateListing() {
       // Clear sessionStorage
       sessionStorage.removeItem('pendingListing');
 
-      // Navigate back to the job listing dashboard if editing, otherwise to employer dashboard
+      // Navigate back to the job listing dashboard if editing, otherwise to assessment creation
       if (isEditMode) {
         navigate(`/JobListingDashboard?id=${editingListingId}`);
       } else {
-        navigate('/EmployerDashboard');
+        // Navigate to AssignProject page to create assessment
+        const createdJobId = result.data?.jobListing?._id;
+        if (createdJobId) {
+          navigate(`/AssignProject?jobId=${createdJobId}`);
+        } else {
+          navigate('/EmployerDashboard');
+        }
       }
 
     } catch (error) {
@@ -773,7 +779,7 @@ export default function CreateListing() {
     if (!hoursPerWeek) return false;
 
     // Compensation
-    if (compensationType !== "unpaid" && !compensation.trim()) return false;
+    if (compensationType !== "unpaid" && !String(compensation).trim()) return false;
     
     return true;
   };

@@ -36,6 +36,9 @@ import CandidateTrackingSolution2 from './pages/CandidateTrackingSolution2';
 import CandidateTrackingSolution3 from './pages/CandidateTrackingSolution3';
 import CandidateTrackingAnalysis from './pages/CandidateTrackingAnalysis';
 import ReviewAssessments from './pages/ReviewAssessments';
+import GradeAssessment from './pages/GradeAssessment';
+import AdminMatching from './pages/AdminMatching';
+import SendMatches from './pages/SendMatches';
 import ReviewMatches from './pages/ReviewMatches';
 import InterviewCalendar from './pages/InterviewCalendar';
 import ReviewInterviews from './pages/ReviewInterviews';
@@ -52,6 +55,7 @@ import NewKanbanDesign from './pages/NewKanbanDesign';
 import StudentCalendar from './pages/StudentCalendar';
 import CompanyProfile from './pages/CompanyProfile';
 import Logout from './pages/Logout';
+import AdminPortal from './pages/AdminPortal';
 import Layout from './Layout.jsx';
 
 
@@ -94,6 +98,9 @@ export const PAGES = {
     "CandidateTrackingSolution3": CandidateTrackingSolution3,
     "CandidateTrackingAnalysis": CandidateTrackingAnalysis,
     "ReviewAssessments": ReviewAssessments,
+    "GradeAssessment": GradeAssessment,
+    "AdminMatching": AdminMatching,
+    "SendMatches": SendMatches,
     "ReviewMatches": ReviewMatches,
     "InterviewCalendar": InterviewCalendar,
     "ReviewInterviews": ReviewInterviews,
@@ -110,6 +117,7 @@ export const PAGES = {
     "StudentCalendar": StudentCalendar,
     "CompanyProfile": CompanyProfile,
     "Logout": Logout,
+    "AdminPortal": AdminPortal,
 }
 
 export const pagesConfig = {

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Clock } from "lucide-react"; 
+import { ArrowLeft, Clock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "../components/navigation/Header";
 import ProjectsList from "../components/assign-project/ProjectsList";
@@ -10,10 +10,15 @@ import ProjectDetailModal from "../components/assign-project/ProjectDetailModal"
 import AssignConfirmationModal from "../components/assign-project/AssignConfirmationModal";
 import PostingSuccessModal from "../components/assign-project/PostingSuccessModal";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
+import { API_URL } from "@/config";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AssignProject() {
   const navigate = useNavigate();
-  
+  const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const jobListingId = searchParams.get("jobId");
+
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -21,181 +26,133 @@ export default function AssignProject() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [recommendedProject, setRecommendedProject] = useState(null);
+  const [jobListing, setJobListing] = useState(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    loadProjects();
+    loadJobAndGenerateProjects();
   }, []);
 
-  const loadProjects = () => {
+  const loadJobAndGenerateProjects = async () => {
     setIsLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      const generatedProjects = generateMockProjects();
-      setProjects(generatedProjects);
-      setRecommendedProject(generatedProjects[0]); // First project is recommended
+
+    try {
+      const token = localStorage.getItem('token');
+
+      // If we have a job ID, fetch it and generate AI assessments
+      if (jobListingId) {
+        // Fetch job listing details
+        const jobResponse = await fetch(`${API_URL}/api/job-listings/${jobListingId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const jobData = await jobResponse.json();
+        if (jobData.success) {
+          setJobListing(jobData.data.jobListing);
+
+          // Generate 3 general AI assessments
+          await generateAIAssessments(jobData.data.jobListing, token);
+        }
+      } else {
+        // No job ID - redirect to dashboard
+        toast({
+          title: "Missing Job ID",
+          description: "Please create a job listing first",
+          variant: "destructive",
+        });
+        navigate('/EmployerDashboard');
+      }
+    } catch (error) {
+      console.error('Error loading projects:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate assessments. Please try again.",
+        variant: "destructive",
+      });
+      // No fallback - show error state
+      setProjects([]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
-  const generateMockProjects = () => {
-    return [
-      {
-        id: 1,
-        title: "Real-Time Chat Application",
-        description: "Build a real-time chat application with WebSocket support, user authentication, and message persistence.",
-        shortDescription: "Real-time messaging system with authentication",
-        whyCurated: "Tests real-time architecture and WebSocket implementation — essential skills for your role. Will help identify candidates who can handle concurrent connections and state synchronization.",
-        skills: ["React", "Node.js", "WebSocket", "MongoDB", "Authentication"],
-        difficulty: "Intermediate",
-        estimatedTime: "3 hours",
-        requirements: [
-          "User registration and login system",
-          "Real-time message sending and receiving",
-          "Chat room creation and management",
-          "Message history persistence",
-          "Online/offline user status indicators"
-        ],
-        acceptanceCriteria: [
-          "Messages appear instantly without page refresh",
-          "Users can see who's online",
-          "Chat history persists across sessions",
-          "Clean, responsive UI",
-          "No security vulnerabilities"
-        ],
-        gradingRubric: [
-          { category: "Functionality", description: "Core features work correctly (messaging, auth, persistence)", defaultEmphasis: 85 },
-          { category: "Code Quality", description: "Clean, well-organized code following best practices", defaultEmphasis: 70 },
-          { category: "Real-time Performance", description: "Messages appear instantly, no lag or delays", defaultEmphasis: 75 },
-          { category: "UI/UX Design", description: "Intuitive interface, responsive design", defaultEmphasis: 50 },
-          { category: "Error Handling", description: "Graceful handling of edge cases and errors", defaultEmphasis: 60 }
-        ]
-      },
-      {
-        id: 2,
-        title: "E-Commerce Product Dashboard",
-        description: "Create an admin dashboard for managing products, inventory, and sales analytics with data visualization.",
-        shortDescription: "Admin dashboard with analytics and product management",
-        whyCurated: "Evaluates data visualization and complex state management — key competencies for this role. Tests ability to build admin-facing tools with multiple data sources.",
-        skills: ["React", "TypeScript", "REST API", "Charts", "State Management"],
-        difficulty: "Intermediate",
-        estimatedTime: "4 hours",
-        requirements: [
-          "Product CRUD operations",
-          "Inventory tracking system",
-          "Sales analytics with charts",
-          "Search and filter functionality",
-          "Responsive table views"
-        ],
-        acceptanceCriteria: [
-          "All CRUD operations work correctly",
-          "Charts accurately represent data",
-          "Fast search and filtering",
-          "Mobile-responsive design",
-          "Data validation on all inputs"
-        ],
-        gradingRubric: [
-          { category: "CRUD Operations", description: "All create, read, update, delete functions work correctly", defaultEmphasis: 80 },
-          { category: "Data Visualization", description: "Charts are accurate, interactive, and insightful", defaultEmphasis: 75 },
-          { category: "TypeScript Usage", description: "Proper type definitions and type safety", defaultEmphasis: 65 },
-          { category: "UI/UX", description: "Clean interface, mobile responsive, easy to navigate", defaultEmphasis: 55 },
-          { category: "Performance", description: "Fast search/filter, optimized rendering", defaultEmphasis: 70 }
-        ]
-      },
-      {
-        id: 3,
-        title: "Task Automation CLI Tool",
-        description: "Develop a command-line tool that automates common development tasks like file processing, API testing, and deployment.",
-        shortDescription: "CLI tool for development automation",
-        whyCurated: "Assesses backend tooling and CLI design — important for this position. Will reveal candidates' systems thinking and ability to build developer tools.",
-        skills: ["Python", "CLI", "File Processing", "API Integration", "Scripting"],
-        difficulty: "Advanced",
-        estimatedTime: "3 hours",
-        requirements: [
-          "Command-line argument parsing",
-          "File batch processing capabilities",
-          "HTTP request testing functionality",
-          "Configuration file support",
-          "Error handling and logging"
-        ],
-        acceptanceCriteria: [
-          "Clear command documentation",
-          "Handles edge cases gracefully",
-          "Efficient file processing",
-          "Helpful error messages",
-          "Easy to install and use"
-        ],
-        gradingRubric: [
-          { category: "Functionality", description: "All commands work as expected with proper arguments", defaultEmphasis: 85 },
-          { category: "Code Architecture", description: "Modular, maintainable code structure", defaultEmphasis: 75 },
-          { category: "Error Handling", description: "Clear error messages, graceful failure handling", defaultEmphasis: 70 },
-          { category: "Documentation", description: "Clear README with usage examples", defaultEmphasis: 60 },
-          { category: "User Experience", description: "Intuitive commands, helpful output", defaultEmphasis: 55 }
-        ]
-      },
-      {
-        id: 4,
-        title: "Weather Forecast Widget",
-        description: "Build a weather widget that displays current conditions and forecasts using a public weather API.",
-        shortDescription: "Weather widget with forecast and location search",
-        whyCurated: "Tests third-party API integration and error handling — valuable skills for this role. Will assess ability to work with external data sources and handle API failures.",
-        skills: ["JavaScript", "API Integration", "UI/UX", "Geolocation"],
-        difficulty: "Beginner",
-        estimatedTime: "2 hours",
-        requirements: [
-          "Current weather display",
-          "5-day forecast view",
-          "Location search functionality",
-          "Geolocation support",
-          "Temperature unit toggle (F/C)"
-        ],
-        acceptanceCriteria: [
-          "Accurate weather data",
-          "Smooth animations",
-          "Clean, intuitive interface",
-          "Works on mobile devices",
-          "Handles API errors gracefully"
-        ],
-        gradingRubric: [
-          { category: "API Integration", description: "Correct API usage, data fetching and parsing", defaultEmphasis: 80 },
-          { category: "UI Design", description: "Clean, attractive interface with smooth animations", defaultEmphasis: 65 },
-          { category: "Feature Completeness", description: "All required features implemented and working", defaultEmphasis: 75 },
-          { category: "Error Handling", description: "Handles API errors and invalid inputs gracefully", defaultEmphasis: 60 },
-          { category: "Responsiveness", description: "Works well on mobile and desktop", defaultEmphasis: 50 }
-        ]
-      },
-      {
-        id: 5,
-        title: "Data Visualization Dashboard",
-        description: "Create an interactive dashboard that visualizes complex datasets with multiple chart types and filtering options.",
-        shortDescription: "Interactive dashboard with data visualizations",
-        whyCurated: "Challenges advanced data visualization and interaction design — critical for this position. Will test ability to make complex data accessible and actionable.",
-        skills: ["React", "D3.js", "Data Analysis", "TypeScript", "Responsive Design"],
-        difficulty: "Advanced",
-        estimatedTime: "4 hours",
-        requirements: [
-          "Multiple chart types (bar, line, pie)",
-          "Interactive filtering system",
-          "Data export functionality",
-          "Responsive grid layout",
-          "Real-time data updates"
-        ],
-        acceptanceCriteria: [
-          "Charts are interactive and responsive",
-          "Filters update visualizations instantly",
-          "Data exports correctly",
-          "Performance is optimized",
-          "Accessible to screen readers"
-        ],
-        gradingRubric: [
-          { category: "Visualization Quality", description: "Charts are clear, accurate, and interactive", defaultEmphasis: 85 },
-          { category: "Interactivity", description: "Filters update instantly, smooth user interactions", defaultEmphasis: 75 },
-          { category: "Code Quality", description: "Clean, optimized, well-structured code", defaultEmphasis: 70 },
-          { category: "Design", description: "Professional appearance, responsive layout", defaultEmphasis: 60 },
-          { category: "Accessibility", description: "Screen reader support, keyboard navigation", defaultEmphasis: 55 }
-        ]
+  const generateAIAssessments = async (listing, token, previousAssessments = []) => {
+    try {
+      // Start showing progressive loading
+      setProjects([]);
+
+      // Simulate progressive updates by showing each assessment as it "arrives"
+      // This creates a better UX even though they're generated in batch
+      const response = await fetch(`${API_URL}/api/assessments/ai/generate-batch`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          jobListingId: listing._id,
+          previousAssessments: previousAssessments.length > 0 ? previousAssessments : undefined
+        })
+      });
+
+      const data = await response.json();
+
+      console.log('✅ AI batch assessments generated:', data);
+
+      if (data.success && data.data.assessments && Array.isArray(data.data.assessments)) {
+        const difficultyMap = { easy: 'Beginner', medium: 'Intermediate', hard: 'Advanced' };
+
+        // Add each assessment with a progressive delay for better UX
+        for (let index = 0; index < data.data.assessments.length; index++) {
+          const assessment = data.data.assessments[index];
+          const assessmentType = assessment.assessmentType || 'coding';
+
+          const project = {
+            id: index + 1,
+            title: assessment.title,
+            description: assessment.description,
+            shortDescription: assessment.description,
+            whyCurated: assessment.whyCurated || `AI-generated ${assessmentType.replace('_', ' ')} assessment tailored for ${listing.roleTitle}`,
+            skills: listing.requiredSkills?.map(s => s.skillName) || [],
+            difficulty: difficultyMap[assessment.difficulty] || assessment.difficulty || 'Intermediate',
+            estimatedTime: `${Math.floor(assessment.timeLimit / 60)} hour${Math.floor(assessment.timeLimit / 60) !== 1 ? 's' : ''}`,
+            requirements: assessment.requirements || [],
+            acceptanceCriteria: assessment.acceptanceCriteria || assessment.evaluationCriteria || [],
+            gradingRubric: [
+              { category: "Functionality", description: "Core features work correctly", defaultEmphasis: 85 },
+              { category: "Code Quality", description: "Clean, well-organized code", defaultEmphasis: 70 },
+              { category: "Problem Solving", description: "Effective approach and logic", defaultEmphasis: 75 },
+              { category: "Completeness", description: "All requirements met", defaultEmphasis: 80 }
+            ],
+            aiGenerated: true,
+            assessmentType: assessmentType,
+            assessmentData: assessment // Store full assessment data for later
+          };
+
+          // Update state progressively with a delay for visual effect
+          // Use callback form to ensure we're always working with the latest state
+          await new Promise(resolve => setTimeout(resolve, 800));
+          setProjects(prevProjects => [...prevProjects, project]);
+
+          if (index === 0) {
+            setRecommendedProject(project);
+          }
+        }
+      } else {
+        throw new Error('Invalid response format');
       }
-    ];
+    } catch (error) {
+      console.error('Error generating batch assessments:', error);
+      toast({
+        title: "Generation Failed",
+        description: "Failed to generate AI assessments. Please try again.",
+        variant: "destructive",
+      });
+      setProjects([]);
+    }
   };
 
   const handleProjectSelect = (project) => {
@@ -215,21 +172,78 @@ export default function AssignProject() {
     }
   };
 
-  const confirmAssignment = () => {
+  const confirmAssignment = async () => {
     setShowConfirmModal(false);
-    
-    // Post the listing with the selected project
-    const listingData = JSON.parse(sessionStorage.getItem('pendingListing') || '{}');
-    console.log('Posting listing with project:', {
-      ...listingData,
-      projectId: selectedProject.id,
-      projectTitle: selectedProject.title
-    });
-    
-    sessionStorage.removeItem('pendingListing');
-    
-    // Show success modal instead of alert
-    setShowSuccessModal(true);
+
+    try {
+      const token = localStorage.getItem('token');
+
+      // If this is an AI-generated assessment, save it to the database
+      if (selectedProject.aiGenerated && selectedProject.assessmentData) {
+        const assessment = selectedProject.assessmentData;
+        const type = selectedProject.assessmentType;
+
+        // Prepare assessment payload
+        let assessmentPayload = {
+          title: assessment.title,
+          description: assessment.description,
+          assessmentType: type,
+          timeLimit: assessment.timeLimit,
+          jobListingId: jobListingId
+        };
+
+        // Add type-specific data
+        if (type === 'coding') {
+          assessmentPayload.codingChallenge = {
+            problemStatement: assessment.problemStatement,
+            starterCode: assessment.starterCode || '',
+            testCases: assessment.testCases || [],
+            allowedLanguages: assessment.allowedLanguages || ['JavaScript', 'Python'],
+            difficulty: assessment.difficulty || 'medium'
+          };
+          assessmentPayload.totalPoints = 100;
+          assessmentPayload.passingScore = 70;
+        } else if (type === 'technical_quiz' || type === 'case_study') {
+          assessmentPayload.questions = assessment.questions || [];
+          assessmentPayload.totalPoints = assessment.totalPoints || 100;
+          assessmentPayload.passingScore = assessment.passingScore || 70;
+        }
+
+        // Save assessment to database
+        const response = await fetch(`${API_URL}/api/assessments`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(assessmentPayload)
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to save assessment');
+        }
+
+        toast({
+          title: "Success!",
+          description: "Assessment has been created and linked to your job listing",
+        });
+      }
+
+      // Clear any pending listing data
+      sessionStorage.removeItem('pendingListing');
+
+      // Show success modal
+      setShowSuccessModal(true);
+    } catch (error) {
+      console.error('Error saving assessment:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to save assessment. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleViewDashboard = () => {
@@ -240,6 +254,46 @@ export default function AssignProject() {
   const handleLearnMore = () => {
     setShowSuccessModal(false);
     navigate("/HowMatchingWorks");
+  };
+
+  const handleRefreshAssessments = async () => {
+    if (!jobListing) return;
+
+    // Capture current assessments to pass as "previous" to avoid duplicates
+    const previousAssessmentData = projects.map(p => ({
+      title: p.title,
+      description: p.description,
+      primaryFocus: p.assessmentData?.primaryFocus || p.whyCurated,
+      difficulty: p.difficulty
+    }));
+
+    // Clear projects and recommended project BEFORE setting loading
+    setProjects([]);
+    setRecommendedProject(null);
+
+    // Small delay to ensure state updates are processed
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    setIsLoading(true);
+
+    try {
+      const token = localStorage.getItem('token');
+      await generateAIAssessments(jobListing, token, previousAssessmentData);
+
+      toast({
+        title: "Assessments Regenerated",
+        description: "New AI assessments have been generated successfully",
+      });
+    } catch (error) {
+      console.error('Error regenerating assessments:', error);
+      toast({
+        title: "Error",
+        description: "Failed to regenerate assessments. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const breadcrumbItems = [
@@ -266,9 +320,27 @@ export default function AssignProject() {
             <h1 className="text-5xl font-semibold text-[#0B1121] mb-4">
               Assign Assessment Project
             </h1>
-            <p className="text-xl text-[#6B7280] font-normal">
+            <p className="text-xl text-[#6B7280] font-normal mb-6">
               Choose a project for candidates to complete — then your listing goes live
             </p>
+
+            {/* Refresh Button */}
+            {!isLoading && projects.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3 }}
+              >
+                <Button
+                  onClick={handleRefreshAssessments}
+                  variant="outline"
+                  className="gap-2 rounded-xl h-11 px-6 border-2 hover:border-[#6366F1] hover:bg-[#6366F1]/5 transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Regenerate Assessments</span>
+                </Button>
+              </motion.div>
+            )}
           </motion.div>
 
           {/* Projects List */}

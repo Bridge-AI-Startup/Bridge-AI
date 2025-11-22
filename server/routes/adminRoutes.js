@@ -1,10 +1,15 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 const User = require('../models/User');
 const TeamMember = require('../models/TeamMember');
 const Company = require('../models/Company');
 const JobListing = require('../models/JobListing');
+const Application = require('../models/Application');
+const Assessment = require('../models/Assessment');
+const AssessmentResult = require('../models/AssessmentResult');
+const Match = require('../models/Match');
 
 // Middleware to check if we're in development mode
 const devOnly = (req, res, next) => {
@@ -1224,6 +1229,1025 @@ router.post('/clear/:type', devOnly, async (req, res) => {
     res.json({ success: true, data: { deletedCount: result.deletedCount } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * @desc    Get all pending assessments for admin grading
+ * @route   GET /api/admin/assessments/pending
+ * @access  Development only
+ */
+router.get('/assessments/pending', devOnly, async (req, res) => {
+  try {
+    // Get ALL applications with completed assessments (not filtered by company)
+    const applications = await Application.find({
+      stage: 'assessment_completed'
+    })
+      .populate('candidateId', 'firstName lastName email profilePicture')
+      .populate('jobListingId', 'roleTitle')
+      .populate('companyId', 'companyName')
+      .sort({ lastActivityAt: -1 });
+
+    // Get assessment results for these applications
+    const applicationsWithAssessments = await Promise.all(
+      applications.map(async (app) => {
+        const assessmentResults = await AssessmentResult.find({
+          candidateId: app.candidateId._id,
+          jobListingId: app.jobListingId._id,
+          status: 'completed'
+        }).populate('assessmentId', 'title assessmentType timeLimit');
+
+        return {
+          application: app,
+          assessmentResults: assessmentResults
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        pendingAssessments: applicationsWithAssessments,
+        count: applicationsWithAssessments.length
+      }
+    });
+  } catch (error) {
+    console.error('Error in admin getPendingAssessments:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch pending assessments'
+    });
+  }
+});
+
+/**
+ * @desc    Get single application with assessment details
+ * @route   GET /api/admin/applications/:id
+ * @access  Development only
+ */
+router.get('/applications/:id', devOnly, async (req, res) => {
+  try {
+    const application = await Application.findById(req.params.id)
+      .populate('candidateId')
+      .populate('jobListingId')
+      .populate('companyId');
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    // Get assessment results
+    const assessmentResults = await AssessmentResult.find({
+      candidateId: application.candidateId._id,
+      jobListingId: application.jobListingId._id
+    }).populate('assessmentId', 'title assessmentType timeLimit description');
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        application: application,
+        assessmentResults: assessmentResults
+      }
+    });
+  } catch (error) {
+    console.error('Error in admin getApplication:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch application'
+    });
+  }
+});
+
+/**
+ * @desc    Admin grade assessment (manual grading)
+ * @route   POST /api/admin/applications/:id/grade
+ * @access  Development only
+ */
+router.post('/applications/:id/grade', devOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { assessmentResultId, score, feedback, moveToInterview } = req.body;
+
+    // Find assessment result
+    const assessmentResult = await AssessmentResult.findById(assessmentResultId);
+    if (!assessmentResult) {
+      return res.status(404).json({
+        success: false,
+        message: 'Assessment result not found'
+      });
+    }
+
+    // Update assessment result with manual grade
+    assessmentResult.score = score;
+    assessmentResult.results.detailedFeedback = feedback || '';
+    assessmentResult.results.evaluatorNotes = `Manually graded by admin`;
+    await assessmentResult.save();
+
+    // Update application
+    const application = await Application.findById(id);
+    if (application && moveToInterview) {
+      application.stage = 'interview_scheduled';
+      application.lastActivityAt = new Date();
+      application.stageHistory.push({
+        stage: 'interview_scheduled',
+        movedAt: new Date(),
+        movedBy: 'admin',
+        notes: `Passed assessment with score ${score}`
+      });
+      await application.save();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Assessment graded successfully',
+      data: {
+        assessmentResult: assessmentResult,
+        application: application
+      }
+    });
+  } catch (error) {
+    console.error('Error in admin gradeAssessment:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to grade assessment'
+    });
+  }
+});
+
+/**
+ * ========================================
+ * MATCHING ENDPOINTS
+ * ========================================
+ */
+
+/**
+ * @desc    Get all students and companies for matching
+ * @route   GET /api/admin/matching/data
+ * @access  Development only
+ */
+router.get('/matching/data', devOnly, async (req, res) => {
+  try {
+    // Get all students
+    const students = await User.find({})
+      .select('_id name email university education skills onboardingCompleted')
+      .lean();
+
+    // Add firstName and lastName from name field for compatibility
+    students.forEach(student => {
+      const nameParts = (student.name || '').split(' ');
+      student.firstName = nameParts[0] || '';
+      student.lastName = nameParts.slice(1).join(' ') || '';
+    });
+
+    // Get all companies with job listings
+    const companies = await Company.find({ isActive: true })
+      .select('_id companyName industry companySize companyWebsite')
+      .lean();
+
+    // Get all job listings
+    const jobListings = await JobListing.find({ status: 'active' })
+      .populate('companyId', 'companyName')
+      .select('_id roleTitle companyId requiredSkills workLocation salaryRange')
+      .lean();
+
+    // Get existing matches
+    const matches = await Match.find({})
+      .populate('studentId', 'firstName lastName email')
+      .populate('companyId', 'companyName')
+      .populate('jobListingId', 'roleTitle')
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        students,
+        companies,
+        jobListings,
+        matches
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching matching data:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch matching data'
+    });
+  }
+});
+
+/**
+ * @desc    Create a new match
+ * @route   POST /api/admin/matching/create
+ * @access  Development only
+ */
+router.post('/matching/create', devOnly, async (req, res) => {
+  try {
+    const {
+      studentId,
+      companyId,
+      jobListingId,
+      overallScore,
+      matchFactors,
+      adminNotes,
+      matchReason
+    } = req.body;
+
+    // Validate required fields
+    if (!studentId || !companyId || overallScore === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID, Company ID, and overall score are required'
+      });
+    }
+
+    // Check if match already exists
+    const existingMatch = await Match.findOne({
+      studentId,
+      companyId,
+      ...(jobListingId && { jobListingId })
+    });
+
+    if (existingMatch) {
+      return res.status(409).json({
+        success: false,
+        message: 'A match between this student and company/job already exists',
+        data: { existingMatch }
+      });
+    }
+
+    // Create new match
+    const match = new Match({
+      studentId,
+      companyId,
+      jobListingId,
+      overallScore,
+      matchFactors: matchFactors || {},
+      adminNotes,
+      matchReason,
+      matchType: 'manual',
+      createdBy: 'admin',
+      status: 'active'
+    });
+
+    await match.save();
+
+    // Populate for response
+    await match.populate([
+      { path: 'studentId', select: 'firstName lastName email' },
+      { path: 'companyId', select: 'companyName' },
+      { path: 'jobListingId', select: 'roleTitle' }
+    ]);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Match created successfully',
+      data: { match }
+    });
+  } catch (error) {
+    console.error('Error creating match:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create match'
+    });
+  }
+});
+
+/**
+ * @desc    Update an existing match
+ * @route   PUT /api/admin/matching/:matchId
+ * @access  Development only
+ */
+router.put('/matching/:matchId', devOnly, async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    const {
+      overallScore,
+      matchFactors,
+      status,
+      adminNotes,
+      matchReason,
+      visibleToStudent,
+      visibleToEmployer
+    } = req.body;
+
+    const match = await Match.findById(matchId);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    // Update fields
+    if (overallScore !== undefined) match.overallScore = overallScore;
+    if (matchFactors) match.matchFactors = { ...match.matchFactors, ...matchFactors };
+    if (status) match.status = status;
+    if (adminNotes !== undefined) match.adminNotes = adminNotes;
+    if (matchReason !== undefined) match.matchReason = matchReason;
+    if (visibleToStudent !== undefined) match.visibleToStudent = visibleToStudent;
+    if (visibleToEmployer !== undefined) match.visibleToEmployer = visibleToEmployer;
+
+    match.lastModifiedBy = 'admin';
+
+    await match.save();
+
+    // Populate for response
+    await match.populate([
+      { path: 'studentId', select: 'firstName lastName email' },
+      { path: 'companyId', select: 'companyName' },
+      { path: 'jobListingId', select: 'roleTitle' }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Match updated successfully',
+      data: { match }
+    });
+  } catch (error) {
+    console.error('Error updating match:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update match'
+    });
+  }
+});
+
+/**
+ * @desc    Delete a match by query (studentId, companyId, jobListingId)
+ * @route   DELETE /api/admin/matching/delete
+ * @access  Development only
+ */
+router.delete('/matching/delete', devOnly, async (req, res) => {
+  try {
+    const { studentId, companyId, jobListingId } = req.body;
+
+    if (!studentId || !companyId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student ID and Company ID are required'
+      });
+    }
+
+    const query = {
+      studentId,
+      companyId,
+      ...(jobListingId && { jobListingId })
+    };
+
+    const deletedMatch = await Match.findOneAndDelete(query);
+
+    if (!deletedMatch) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Match deleted successfully',
+      data: { deletedMatch }
+    });
+  } catch (error) {
+    console.error('Error deleting match:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete match'
+    });
+  }
+});
+
+/**
+ * @desc    Populate matches with random test data
+ * @route   POST /api/admin/matching/populate-random
+ * @access  Development only
+ */
+router.post('/matching/populate-random', devOnly, async (req, res) => {
+  try {
+    // Get all students and job listings
+    // Find users who have university field (students) or no userType/userType='student'
+    const students = await User.find({
+      $or: [
+        { university: { $exists: true, $ne: null } },
+        { userType: 'student' }
+      ]
+    }).select('_id firstName lastName');
+    const jobListings = await JobListing.find({}).select('_id roleTitle companyId').populate('companyId');
+
+    if (students.length === 0 || jobListings.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Need at least one student and one job listing to generate matches'
+      });
+    }
+
+    // Helper function to generate random score with decimal precision
+    const generateRandomScore = () => {
+      // Generate scores with varied distribution
+      const rand = Math.random();
+      let score;
+
+      if (rand < 0.2) {
+        // 20% poor matches (0-39)
+        score = Math.random() * 40;
+      } else if (rand < 0.5) {
+        // 30% fair matches (40-59)
+        score = 40 + Math.random() * 20;
+      } else if (rand < 0.8) {
+        // 30% good matches (60-79)
+        score = 60 + Math.random() * 20;
+      } else {
+        // 20% excellent matches (80-100)
+        score = 80 + Math.random() * 20;
+      }
+
+      return Math.round(score * 10) / 10; // Round to 1 decimal place
+    };
+
+    // Generate match factors
+    const generateMatchFactors = (overallScore) => {
+      const variation = 15; // +/- variation from overall score
+      return {
+        skillsMatch: Math.max(0, Math.min(100, overallScore + (Math.random() * variation * 2 - variation))),
+        experienceMatch: Math.max(0, Math.min(100, overallScore + (Math.random() * variation * 2 - variation))),
+        educationMatch: Math.max(0, Math.min(100, overallScore + (Math.random() * variation * 2 - variation))),
+        locationMatch: Math.max(0, Math.min(100, overallScore + (Math.random() * variation * 2 - variation))),
+        cultureMatch: Math.max(0, Math.min(100, overallScore + (Math.random() * variation * 2 - variation)))
+      };
+    };
+
+    const matches = [];
+    let createdCount = 0;
+
+    // Create matches for each student-job combination
+    for (const student of students) {
+      for (const job of jobListings) {
+        // Check if match already exists
+        const existingMatch = await Match.findOne({
+          studentId: student._id,
+          jobListingId: job._id
+        });
+
+        if (!existingMatch) {
+          const overallScore = generateRandomScore();
+          const matchFactors = generateMatchFactors(overallScore);
+
+          const match = new Match({
+            studentId: student._id,
+            jobListingId: job._id,
+            companyId: job.companyId._id,
+            overallScore: overallScore,
+            matchFactors: matchFactors,
+            status: 'pending',
+            matchType: 'ai_generated',
+            createdBy: 'admin',
+            matchReason: 'Random test data for development',
+            visibleToStudent: false,
+            visibleToEmployer: false
+          });
+
+          await match.save();
+          matches.push(match);
+          createdCount++;
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Created ${createdCount} random matches`,
+      data: {
+        matchesCreated: createdCount,
+        studentsCount: students.length,
+        jobListingsCount: jobListings.length,
+        totalPossible: students.length * jobListings.length
+      }
+    });
+  } catch (error) {
+    console.error('Error populating random matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to populate random matches'
+    });
+  }
+});
+
+/**
+ * @desc    Clear all matches from the database
+ * @route   DELETE /api/admin/matching/clear-all
+ * @access  Development only
+ */
+router.delete('/matching/clear-all', devOnly, async (req, res) => {
+  try {
+    // Delete all matches
+    const matchResult = await Match.deleteMany({});
+
+    // Also delete all assessment results that were auto-created
+    const assessmentResult = await AssessmentResult.deleteMany({});
+
+    return res.status(200).json({
+      success: true,
+      message: `Deleted ${matchResult.deletedCount} matches and ${assessmentResult.deletedCount} assessment results`,
+      data: {
+        matchesDeleted: matchResult.deletedCount,
+        assessmentResultsDeleted: assessmentResult.deletedCount
+      }
+    });
+  } catch (error) {
+    console.error('Error clearing matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to clear matches'
+    });
+  }
+});
+
+/**
+ * @desc    Delete a match by ID
+ * @route   DELETE /api/admin/matching/:matchId
+ * @access  Development only
+ */
+router.delete('/matching/:matchId', devOnly, async (req, res) => {
+  try {
+    const { matchId } = req.params;
+
+    const match = await Match.findByIdAndDelete(matchId);
+    if (!match) {
+      return res.status(404).json({
+        success: false,
+        message: 'Match not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Match deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting match:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete match'
+    });
+  }
+});
+
+/**
+ * @desc    Get matches for a specific student
+ * @route   GET /api/admin/matching/student/:studentId
+ * @access  Development only
+ */
+router.get('/matching/student/:studentId', devOnly, async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const matches = await Match.find({ studentId })
+      .populate('companyId', 'companyName industry companyWebsite')
+      .populate('jobListingId', 'roleTitle workLocation salaryRange')
+      .sort({ overallScore: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: { matches }
+    });
+  } catch (error) {
+    console.error('Error fetching student matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch student matches'
+    });
+  }
+});
+
+/**
+ * @desc    Get matches for a specific job listing
+ * @route   GET /api/admin/matching/job/:jobListingId
+ * @access  Development only
+ */
+router.get('/matching/job/:jobListingId', devOnly, async (req, res) => {
+  try {
+    const { jobListingId } = req.params;
+
+    const matches = await Match.find({
+      jobListingId,
+      visibleToEmployer: true
+    })
+      .populate('studentId', 'firstName lastName email university skills education')
+      .populate('companyId', 'companyName')
+      .sort({ overallScore: -1 });
+
+    return res.status(200).json({
+      success: true,
+      data: { matches }
+    });
+  } catch (error) {
+    console.error('Error fetching job listing matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch job listing matches'
+    });
+  }
+});
+
+/**
+ * @desc    Batch create multiple matches
+ * @route   POST /api/admin/matching/batch
+ * @access  Development only
+ */
+router.post('/matching/batch', devOnly, async (req, res) => {
+  try {
+    const { matches } = req.body;
+
+    if (!matches || !Array.isArray(matches) || matches.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Matches array is required'
+      });
+    }
+
+    const results = {
+      created: [],
+      updated: [],
+      errors: []
+    };
+
+    for (const matchData of matches) {
+      try {
+        const {
+          studentId,
+          companyId,
+          jobListingId,
+          overallScore,
+          matchFactors,
+          adminNotes,
+          matchReason
+        } = matchData;
+
+        // Check if match already exists
+        const existingMatch = await Match.findOne({
+          studentId,
+          companyId,
+          ...(jobListingId && { jobListingId })
+        });
+
+        if (existingMatch) {
+          // Update existing match
+          existingMatch.overallScore = overallScore;
+          existingMatch.matchFactors = matchFactors || existingMatch.matchFactors;
+          existingMatch.adminNotes = adminNotes || existingMatch.adminNotes;
+          existingMatch.matchReason = matchReason || existingMatch.matchReason;
+          existingMatch.lastModifiedBy = 'admin';
+          await existingMatch.save();
+
+          results.updated.push(existingMatch._id);
+        } else {
+          // Create new match
+          const match = new Match({
+            studentId,
+            companyId,
+            jobListingId,
+            overallScore,
+            matchFactors: matchFactors || {},
+            adminNotes,
+            matchReason,
+            matchType: 'manual',
+            createdBy: 'admin',
+            status: 'active'
+          });
+          await match.save();
+
+          results.created.push(match._id);
+        }
+      } catch (err) {
+        results.errors.push({
+          matchData,
+          error: err.message
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Batch operation completed: ${results.created.length} created, ${results.updated.length} updated, ${results.errors.length} errors`,
+      data: results
+    });
+  } catch (error) {
+    console.error('Error in batch match creation:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create batch matches'
+    });
+  }
+});
+
+/**
+ * @desc    Get AI suggestion for a student-job match
+ * @route   POST /api/admin/matching/ai-suggest
+ * @access  Development only
+ */
+router.post('/matching/ai-suggest', devOnly, async (req, res) => {
+  try {
+    const { student, job } = req.body;
+
+    if (!student || !job) {
+      return res.status(400).json({
+        success: false,
+        message: 'Student and job data are required'
+      });
+    }
+
+    // Use OpenAI directly
+    const OpenAI = require('openai');
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    // Build prompt for AI
+    const prompt = `You are an expert recruiter. Analyze this student-job match and provide ratings from 0-100 for each category.
+
+Student Profile:
+- Name: ${student.firstName} ${student.lastName}
+- University: ${student.university || 'Unknown'}
+- Skills: ${student.skills?.map(s => s.skillName || s).join(', ') || 'None listed'}
+- Education: ${student.education?.map(e => `${e.degree} in ${e.major}`).join(', ') || 'None listed'}
+
+Job Posting:
+- Role: ${job.roleTitle}
+- Company: ${job.companyId?.companyName || 'Unknown'}
+- Required Skills: ${job.requiredSkills?.join(', ') || 'None listed'}
+- Location: ${job.workLocation || 'Unknown'}
+- Salary Range: ${job.salaryRange?.min || 0} - ${job.salaryRange?.max || 0}
+
+Provide ratings (0-100) for:
+1. skillsMatch - Technical skills alignment
+2. experienceMatch - Experience level match
+3. educationMatch - Educational background fit
+4. culturalFit - Overall cultural alignment
+5. locationMatch - Location/remote work match
+6. compensationMatch - Salary expectation match
+
+Also provide a brief explanation (2-3 sentences) justifying your overall assessment.
+
+Respond ONLY with a JSON object in this exact format:
+{
+  "overallScore": 75,
+  "matchFactors": {
+    "skillsMatch": 80,
+    "experienceMatch": 70,
+    "educationMatch": 75,
+    "culturalFit": 70,
+    "locationMatch": 85,
+    "compensationMatch": 70
+  },
+  "explanation": "This candidate shows strong technical skills alignment with the role requirements. Their educational background matches well with the position level. The location and compensation expectations align closely with what the company offers."
+}`;
+
+    // Call OpenAI with cheapest model
+    const result = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.3,
+      max_tokens: 500,
+      response_format: { type: 'json_object' }
+    });
+
+    const aiResponse = result.choices[0].message.content;
+
+    // Parse AI response
+    let rating;
+    try {
+      rating = JSON.parse(aiResponse);
+    } catch (parseError) {
+      console.error('Error parsing AI response:', parseError, aiResponse);
+      // Fallback to default ratings
+      rating = {
+        overallScore: 50,
+        matchFactors: {
+          skillsMatch: 50,
+          experienceMatch: 50,
+          educationMatch: 50,
+          culturalFit: 50,
+          locationMatch: 50,
+          compensationMatch: 50
+        },
+        explanation: "Unable to generate AI analysis. Default neutral ratings provided."
+      };
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { rating }
+    });
+  } catch (error) {
+    console.error('Error getting AI suggestion:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get AI suggestion'
+    });
+  }
+});
+
+/**
+ * @desc    Generate optimal matches based on constraints
+ * @route   POST /api/admin/matching/generate-optimal
+ * @access  Development only
+ */
+router.post('/matching/generate-optimal', devOnly, async (req, res) => {
+  try {
+    const { studentLimit, jobLimit, minScore } = req.body;
+
+    // Fetch all matches with scores above minimum
+    const allMatches = await Match.find({
+      overallScore: { $gte: minScore || 0 }
+    })
+      .populate('studentId', 'firstName lastName email')
+      .populate('companyId', 'companyName')
+      .populate('jobListingId', 'roleTitle workLocation')
+      .sort({ overallScore: -1 }); // Sort by score descending (best first)
+
+    // Track how many matches each student and job listing has
+    const studentMatchCount = {};
+    const jobMatchCount = {};
+    const selectedMatches = [];
+
+    // Greedy algorithm: go through matches from best to worst
+    for (const match of allMatches) {
+      const studentId = match.studentId._id.toString();
+      const jobId = match.jobListingId._id.toString();
+
+      // Check if constraints are met
+      const studentCount = studentMatchCount[studentId] || 0;
+      const jobCount = jobMatchCount[jobId] || 0;
+
+      if (studentCount < studentLimit && jobCount < jobLimit) {
+        // Add this match
+        selectedMatches.push(match);
+        studentMatchCount[studentId] = studentCount + 1;
+        jobMatchCount[jobId] = jobCount + 1;
+      }
+    }
+
+    // Calculate statistics
+    const uniqueStudents = Object.keys(studentMatchCount).length;
+    const uniqueJobs = Object.keys(jobMatchCount).length;
+    const avgScore = selectedMatches.length > 0
+      ? Math.round(selectedMatches.reduce((sum, m) => sum + m.overallScore, 0) / selectedMatches.length)
+      : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        matches: selectedMatches,
+        stats: {
+          totalMatches: selectedMatches.length,
+          studentsMatched: uniqueStudents,
+          companiesMatched: uniqueJobs, // Field name kept for compatibility, but this is jobs matched
+          avgScore
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error generating optimal matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to generate optimal matches'
+    });
+  }
+});
+
+/**
+ * @desc    Publish final matches (make them visible to students and companies)
+ * @route   POST /api/admin/matching/publish-final
+ * @access  Development only
+ */
+router.post('/matching/publish-final', devOnly, async (req, res) => {
+  try {
+    const { matches } = req.body;
+
+    if (!matches || !Array.isArray(matches) || matches.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Matches array is required'
+      });
+    }
+
+    // First, set all existing matches to not visible
+    await Match.updateMany(
+      {},
+      {
+        $set: {
+          visibleToStudent: false,
+          visibleToEmployer: false,
+          status: 'archived'
+        }
+      }
+    );
+
+    const results = {
+      published: [],
+      errors: []
+    };
+
+    // Publish each selected match
+    for (const matchData of matches) {
+      try {
+        const { studentId, companyId, jobListingId, overallScore, matchFactors } = matchData;
+
+        // Find or create the match
+        let match = await Match.findOne({
+          studentId,
+          companyId,
+          ...(jobListingId && { jobListingId })
+        });
+
+        if (match) {
+          // Update existing match
+          match.visibleToStudent = true;
+          match.visibleToEmployer = true;
+          match.status = 'active';
+          match.overallScore = overallScore;
+          match.matchFactors = matchFactors || match.matchFactors;
+          match.matchType = 'ai_generated';
+          match.lastModifiedBy = 'admin';
+          await match.save();
+        } else {
+          // Create new match
+          match = new Match({
+            studentId,
+            companyId,
+            jobListingId,
+            overallScore,
+            matchFactors: matchFactors || {},
+            visibleToStudent: true,
+            visibleToEmployer: true,
+            status: 'active',
+            matchType: 'ai_generated',
+            createdBy: 'admin',
+            matchReason: 'Published from optimal matching algorithm'
+          });
+          await match.save();
+        }
+
+        // Auto-assign assessments if job listing has assessments
+        if (jobListingId) {
+          const jobListing = await JobListing.findById(jobListingId).populate('assessments');
+
+          if (jobListing && jobListing.assessments && jobListing.assessments.length > 0) {
+            for (const assessment of jobListing.assessments) {
+              // Check if assessment result already exists for this student-assessment combination
+              const existingResult = await AssessmentResult.findOne({
+                assessmentId: assessment._id,
+                candidateId: studentId,
+                jobListingId: jobListingId
+              });
+
+              if (!existingResult) {
+                // Calculate due date (e.g., 7 days from now or use assessment time limit)
+                const dueDate = new Date();
+                const daysToComplete = 7; // Default 7 days
+                dueDate.setDate(dueDate.getDate() + daysToComplete);
+
+                // Create assessment result
+                const assessmentResult = new AssessmentResult({
+                  assessmentResultId: uuidv4(),
+                  assessmentId: assessment._id,
+                  candidateId: studentId,
+                  jobListingId: jobListingId,
+                  applicationId: null, // Will be linked when student applies
+                  status: 'not_started',
+                  dueDate: dueDate,
+                  timeAllowed: assessment.timeLimit || 60, // Default 60 minutes
+                });
+
+                await assessmentResult.save();
+              }
+            }
+          }
+        }
+
+        results.published.push(match._id);
+      } catch (err) {
+        results.errors.push({
+          matchData,
+          error: err.message
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Published ${results.published.length} matches, ${results.errors.length} errors`,
+      data: results
+    });
+  } catch (error) {
+    console.error('Error publishing matches:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to publish matches'
+    });
   }
 });
 

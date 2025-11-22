@@ -27,7 +27,13 @@ export default function ProjectCard({ project, onSelect, delay, isRecommended })
           <h3 className="text-xl font-semibold text-[#0B1121] group-hover:text-[#1E3A8A] transition-colors">
             {project.title}
           </h3>
-          {isRecommended && (
+          {project.aiGenerated && (
+            <span className="px-3 py-1 bg-gradient-to-r from-purple-50 to-blue-50 text-[#6366F1] text-xs font-semibold rounded-full border border-purple-200 whitespace-nowrap flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              AI Generated
+            </span>
+          )}
+          {isRecommended && !project.aiGenerated && (
             <span className="px-3 py-1 bg-blue-50 text-[#1E3A8A] text-xs font-semibold rounded-full border border-blue-200 whitespace-nowrap">
               RECOMMENDED
             </span>

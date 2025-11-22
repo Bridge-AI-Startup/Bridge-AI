@@ -81,12 +81,16 @@ const AuthenticatedApp = () => {
     'EditListing',
     'TeamMembers',
     'ReviewAssessments',
+    'GradeAssessment',
+    'AdminMatching',
+    'SendMatches',
     'ReviewMatches',
     'InterviewCalendar',
     'ReviewInterviews',
     'ReviewOffers',
     'AssignProject',
-    'NewKanbanDesign'
+    'NewKanbanDesign',
+    'AdminPortal'
   ];
 
   // Render the main app

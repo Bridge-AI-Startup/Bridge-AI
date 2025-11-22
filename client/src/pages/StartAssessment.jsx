@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
@@ -9,26 +9,71 @@ import AssessmentInstructions from "../components/assessment/AssessmentInstructi
 import TimeAllotment from "../components/assessment/TimeAllotment";
 import AssessmentActions from "../components/assessment/AssessmentActions";
 import LoadingOverlay from "../components/assessment/LoadingOverlay";
+import { API_URL } from "@/config";
 
 export default function StartAssessment() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [isStarting, setIsStarting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [assessment, setAssessment] = useState(null);
+  const [error, setError] = useState(null);
+
+  const assessmentId = searchParams.get("id");
 
   // Get navigation source from state
   const from = location.state?.from;
-  const companyName = location.state?.companyName || "Seedify Labs";
-  const jobRole = location.state?.jobRole || "Product Intern"; // Changed default jobRole
+  const companyName = location.state?.companyName || "Company";
+  const jobRole = location.state?.jobRole || "Position";
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, []);
+    fetchAssessment();
+  }, [assessmentId]);
 
-  // Mock data - would come from URL params or props
-  const assessmentData = {
-    title: "Software Engineer Mini-Project",
+  const fetchAssessment = async () => {
+    if (!assessmentId) {
+      setError("No assessment ID provided");
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${API_URL}/api/assessments/${assessmentId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch assessment');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setAssessment(data.data.assessment);
+      } else {
+        throw new Error(data.message || 'Failed to fetch assessment');
+      }
+    } catch (err) {
+      console.error('Error fetching assessment:', err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const assessmentData = assessment ? {
+    title: assessment.title,
     companyName: companyName,
-    duration: "2 hours"
+    duration: `${Math.floor(assessment.timeLimit / 60)} hour${Math.floor(assessment.timeLimit / 60) !== 1 ? 's' : ''}`
+  } : {
+    title: "Loading...",
+    companyName: companyName,
+    duration: "..."
   };
 
   // Build breadcrumb items dynamically
@@ -48,7 +93,7 @@ export default function StartAssessment() {
     setIsStarting(true);
     // Simulate loading time
     setTimeout(() => {
-      navigate("/TakeAssessment");
+      navigate(`/TakeAssessment?id=${assessmentId}`);
     }, 2000);
   };
 
@@ -56,10 +101,49 @@ export default function StartAssessment() {
     navigate("/StudentDashboard");
   };
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header currentPage="Dashboard" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-3xl mx-auto">
+            <div className="bg-white rounded-3xl p-12 shadow-lg border border-gray-200 text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#6366F1] mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading assessment...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error || !assessment) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header currentPage="Dashboard" />
+        <div className="pt-24 pb-16 px-6">
+          <div className="max-w-3xl mx-auto">
+            <div className="bg-white rounded-3xl p-12 shadow-lg border border-red-200 text-center">
+              <p className="text-red-600 mb-4">{error || "Assessment not found"}</p>
+              <button
+                onClick={() => navigate("/StudentDashboard")}
+                className="px-6 py-2 bg-[#1E3A8A] text-white rounded-lg hover:bg-[#1E3A8A]/90"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header currentPage="Dashboard" />
-      
+
       <div className="pt-24 pb-16 px-6">
         <div className="max-w-3xl mx-auto">
           {/* Breadcrumbs */}

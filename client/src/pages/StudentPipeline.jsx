@@ -8,79 +8,95 @@ import Header from "../components/navigation/Header";
 import Breadcrumbs from "../components/navigation/Breadcrumbs";
 import KanbanBoard from "../components/candidate-tracking/KanbanBoard";
 import StudentApplicationModal from "../components/candidate-tracking/StudentApplicationModal";
+import { API_URL } from "../config";
 
 export default function StudentPipeline() {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedApplication, setSelectedApplication] = useState(null);
   const [selectedStageId, setSelectedStageId] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [isLoadingAssessments, setIsLoadingAssessments] = useState(true);
 
-  const stages = [
-    { id: "new", label: "Matches", color: "blue" },
-    { id: "interview", label: "Interview", color: "purple" },
-    { id: "offer", label: "Offers", color: "fuchsia" }
-  ];
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    fetchStudentAssessments();
+  }, []);
 
-  const applications = {
-    "new": [
-      { 
-        id: 2, 
-        name: "Seedify Labs", 
-        role: "Product Intern", 
-        location: "Remote", 
-        match: "89%", 
-        date: "Dec 15", 
-        logo: "seedify",
-        assessmentStarted: true,
-        hoursLeft: 2,
-        completionTimeAllowedHours: 4,
-        description: "Early-stage fintech startup revolutionizing investment tools. Need a product intern to help shape our roadmap and work closely with design and engineering.",
-        skills: ["React", "Figma", "Product Strategy", "User Research"],
-        industry: "FinTech",
-        companySize: "11-50",
-        fundingStage: "Seed"
-      },
-      { 
-        id: 4, 
-        name: "CloudVentures", 
-        role: "Frontend Engineer Intern", 
-        location: "Seattle, WA", 
-        match: "88%", 
-        date: "Dec 18", 
-        logo: "cloudstream",
-        assessmentStarted: true,
-        hoursLeft: 0,
-        completionTimeAllowedHours: 4,
-        assessmentStatus: "completed",
-        completedDate: "Dec 18, 2024",
-        description: "Building next-generation cloud storage solutions for developers. Looking for a frontend engineer passionate about user experience and performance.",
-        skills: ["React", "TypeScript", "Tailwind CSS", "GraphQL"],
-        industry: "Cloud Infrastructure",
-        companySize: "201-500",
-        fundingStage: "Series C"
-      },
-      { 
-        id: 1, 
-        name: "Nova Robotics", 
-        role: "Data Science Intern", 
-        location: "San Diego, CA", 
-        match: "94%", 
-        date: "Dec 15", 
-        logo: "nova",
-        assessmentStarted: false,
-        completionTimeAllowedHours: 4,
-        description: "Building autonomous systems for warehouse logistics. Looking for a data science intern to optimize ML models and improve robot navigation algorithms.",
-        skills: ["Python", "TensorFlow", "Data Analysis", "Machine Learning", "Statistics"],
-        industry: "Robotics",
-        companySize: "51-200",
-        fundingStage: "Series A"
+  const fetchStudentAssessments = async () => {
+    try {
+      setIsLoadingAssessments(true);
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`${API_URL}/api/assessments/student/my-assessments`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setAssessments(data.data.assessments || []);
       }
-    ].sort((a, b) => {
+    } catch (error) {
+      console.error('Error fetching student assessments:', error);
+    } finally {
+      setIsLoadingAssessments(false);
+    }
+  };
+
+  // Transform assessments data into applications format
+  const transformAssessmentsToApplications = () => {
+    if (isLoadingAssessments || !assessments.length) {
+      return [];
+    }
+
+    return assessments.map((item, index) => {
+      const { assessmentResult, match } = item;
+      const jobListing = assessmentResult.jobListingId;
+      const company = jobListing?.companyId;
+      const assessment = assessmentResult.assessmentId;
+
+      // Calculate hours left if assessment is in progress
+      let hoursLeft = 0;
+      if (assessmentResult.status === 'in_progress' && assessmentResult.startedAt) {
+        const startTime = new Date(assessmentResult.startedAt);
+        const timeAllowedMs = (assessmentResult.timeAllowed || 60) * 60 * 1000;
+        const endTime = new Date(startTime.getTime() + timeAllowedMs);
+        const now = new Date();
+        const msLeft = endTime - now;
+        hoursLeft = Math.max(0, Math.floor(msLeft / (1000 * 60 * 60)));
+      }
+
+      return {
+        id: assessmentResult._id,
+        name: company?.companyName || 'Unknown Company',
+        role: jobListing?.roleTitle || 'Unknown Role',
+        location: 'Remote', // You can add location data from jobListing if available
+        match: match ? `${Math.round(match.overallScore)}%` : 'N/A',
+        date: new Date(assessmentResult.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        logo: company?.logo || 'default',
+        assessmentStarted: assessmentResult.status === 'in_progress' || assessmentResult.status === 'completed',
+        hoursLeft: hoursLeft,
+        completionTimeAllowedHours: Math.floor((assessmentResult.timeAllowed || 60) / 60),
+        assessmentStatus: assessmentResult.status === 'completed' ? 'completed' : undefined,
+        completedDate: assessmentResult.completedAt ? new Date(assessmentResult.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : undefined,
+        description: jobListing?.roleDescription || '',
+        skills: [], // You can add skills from jobListing if available
+        industry: company?.industry || '',
+        companySize: company?.companySize || '',
+        fundingStage: '',
+        assessmentResultId: assessmentResult._id,
+        assessmentId: assessment?._id,
+        assessmentTitle: assessment?.title || 'Assessment',
+        assessmentType: assessment?.assessmentType || 'coding',
+        dueDate: assessmentResult.dueDate,
+        jobListingId: jobListing?._id
+      };
+    }).sort((a, b) => {
       // Sort order: in progress (0), then not started (1), then completed (2)
       const getOrder = (app) => {
         if (app.assessmentStarted && app.hoursLeft > 0 && !app.assessmentStatus) return 0; // In Progress
@@ -89,7 +105,17 @@ export default function StudentPipeline() {
         return 3; // Fallback for any other state
       };
       return getOrder(a) - getOrder(b);
-    }),
+    });
+  };
+
+  const stages = [
+    { id: "new", label: "Matches", color: "blue" },
+    { id: "interview", label: "Interview", color: "purple" },
+    { id: "offer", label: "Offers", color: "fuchsia" }
+  ];
+
+  const applications = {
+    "new": transformAssessmentsToApplications(),
     "interview": [
       { 
         id: 5, 

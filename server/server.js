@@ -45,6 +45,8 @@ app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/employer-onboarding', require('./routes/employerOnboardingRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/job-listings', require('./routes/jobListingRoutes'));
+app.use('/api/assessments', require('./routes/assessmentRoutes'));
+app.use('/api/applications', require('./routes/applicationRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 
 // Error handling middleware

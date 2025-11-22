@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom"; // Changed useSearchParams to useLocation
 import { motion } from "framer-motion";
-import { Pencil, TrendingUp, Users, Calendar, FileCheck, Briefcase, CheckCircle2 } from "lucide-react"; // Updated icons: Added FileCheck, Briefcase, kept Pencil, removed ArrowLeft, User, Search
+import { Pencil, TrendingUp, Users, Calendar, FileCheck, Briefcase, CheckCircle2, Clock, Eye, EyeOff } from "lucide-react"; // Updated icons: Added FileCheck, Briefcase, Clock, Eye, EyeOff, kept Pencil
 import { Button } from "@/components/ui/button";
 // Removed Input import as it's not directly used in this file anymore
 import Header from "../components/navigation/Header";
@@ -25,12 +25,17 @@ export default function JobListingDashboard() {
   const [jobListing, setJobListing] = useState(null);
   const [isLoadingListing, setIsLoadingListing] = useState(true);
   const [listingError, setListingError] = useState(null);
+  const [assessments, setAssessments] = useState([]);
+  const [isLoadingAssessments, setIsLoadingAssessments] = useState(true);
   const [selectedAssessmentForReview, setSelectedAssessmentForReview] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [selectedCandidateStage, setSelectedCandidateStage] = useState(null);
   const [selectedCandidateIndex, setSelectedCandidateIndex] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [isLoadingMatches, setIsLoadingMatches] = useState(true);
+  const [expandedMatchDetails, setExpandedMatchDetails] = useState({});
 
   // Fetch job listing data
   useEffect(() => {
@@ -79,6 +84,68 @@ export default function JobListingDashboard() {
 
     fetchJobListing();
   }, [listingId, navigate]);
+
+  // Fetch assessments for this job listing
+  useEffect(() => {
+    const fetchAssessments = async () => {
+      if (!listingId) return;
+
+      try {
+        setIsLoadingAssessments(true);
+        const token = localStorage.getItem('token');
+
+        const response = await fetch(`${API_URL}/api/assessments/job-listing/${listingId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          setAssessments(data.data.assessments || []);
+        }
+      } catch (error) {
+        console.error('Error fetching assessments:', error);
+      } finally {
+        setIsLoadingAssessments(false);
+      }
+    };
+
+    fetchAssessments();
+  }, [listingId]);
+
+  // Fetch matches for this job listing
+  useEffect(() => {
+    const fetchMatches = async () => {
+      if (!listingId) return;
+
+      try {
+        setIsLoadingMatches(true);
+        const token = localStorage.getItem('token');
+
+        const response = await fetch(`${API_URL}/api/admin/matching/job/${listingId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          setMatches(data.data.matches || []);
+        }
+      } catch (error) {
+        console.error('Error fetching matches:', error);
+      } finally {
+        setIsLoadingMatches(false);
+      }
+    };
+
+    fetchMatches();
+  }, [listingId]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -350,6 +417,28 @@ export default function JobListingDashboard() {
     { label: jobListing?.roleTitle || "Job Listing" } // Using jobListing.title for the dynamic breadcrumb
   ];
 
+  // Helper functions for matches
+  const getScoreColor = (score) => {
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-blue-600';
+    if (score >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreBgColor = (score) => {
+    if (score >= 80) return 'bg-green-100';
+    if (score >= 60) return 'bg-blue-100';
+    if (score >= 40) return 'bg-yellow-100';
+    return 'bg-red-100';
+  };
+
+  const toggleMatchDetails = (matchId) => {
+    setExpandedMatchDetails(prev => ({
+      ...prev,
+      [matchId]: !prev[matchId]
+    }));
+  };
+
   // Show loading state
   if (isLoadingListing) {
     return (
@@ -514,11 +603,134 @@ export default function JobListingDashboard() {
             </div>
           </motion.div>
 
-          {/* Kanban Pipeline */}
+          {/* Matched Candidates Section */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
+            className="mb-8"
+          >
+            <h2 className="text-2xl font-semibold text-[#0B1121] mb-6">
+              Matched Candidates ({matches.length})
+            </h2>
+
+            {isLoadingMatches ? (
+              <div className="bg-white rounded-2xl p-12 border border-gray-200 flex items-center justify-center">
+                <p className="text-[#6B7280]">Loading matches...</p>
+              </div>
+            ) : matches.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 border border-gray-200 flex flex-col items-center justify-center">
+                <Users className="w-12 h-12 text-gray-400 mb-4" />
+                <p className="text-[#6B7280] text-lg mb-2">No matches yet</p>
+                <p className="text-[#6B7280] text-sm">
+                  Matches will appear here once published by the admin
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
+                <div className="space-y-3">
+                  {matches.map((match) => (
+                    <div
+                      key={match._id}
+                      className="border border-gray-200 rounded-xl p-4 hover:border-[#1E3A8A] transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3">
+                            <a
+                              href={`/ApplicantProfile?userId=${match.studentId._id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-lg font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              {match.studentId.firstName} {match.studentId.lastName}
+                            </a>
+                            <div
+                              className={`px-3 py-1 rounded-full text-sm font-semibold ${getScoreBgColor(
+                                match.overallScore
+                              )} ${getScoreColor(match.overallScore)}`}
+                            >
+                              {match.overallScore.toFixed(1)}% Match
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 mt-2 text-sm text-[#6B7280]">
+                            <span>{match.studentId.email}</span>
+                            {match.studentId.university && (
+                              <>
+                                <span>•</span>
+                                <span>{match.studentId.university}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => toggleMatchDetails(match._id)}
+                          className="ml-4 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          {expandedMatchDetails[match._id] ? (
+                            <EyeOff className="w-5 h-5 text-[#6B7280]" />
+                          ) : (
+                            <Eye className="w-5 h-5 text-[#6B7280]" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Expanded Details */}
+                      {expandedMatchDetails[match._id] && match.matchFactors && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <p className="text-sm font-semibold text-[#0B1121] mb-3">
+                            Match Breakdown
+                          </p>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {Object.entries(match.matchFactors).map(
+                              ([key, value]) => (
+                                <div key={key} className="flex flex-col">
+                                  <span className="text-xs text-[#6B7280] mb-1">
+                                    {key
+                                      .replace(/([A-Z])/g, ' $1')
+                                      .replace(/^./, (str) => str.toUpperCase())}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full ${
+                                          value >= 80
+                                            ? 'bg-green-500'
+                                            : value >= 60
+                                            ? 'bg-blue-500'
+                                            : value >= 40
+                                            ? 'bg-yellow-500'
+                                            : 'bg-red-500'
+                                        }`}
+                                        style={{ width: `${value}%` }}
+                                      />
+                                    </div>
+                                    <span
+                                      className={`text-xs font-semibold ${getScoreColor(
+                                        value
+                                      )}`}
+                                    >
+                                      {value.toFixed(1)}
+                                    </span>
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Kanban Pipeline */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
           >
             <h2 className="text-2xl font-semibold text-[#0B1121] mb-6">
               Application Pipeline
