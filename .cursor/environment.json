@@ -1,0 +1,19 @@
+{
+  "name": "Bridge AI",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "backend",
+      "command": "cd server && npm run dev"
+    },
+    {
+      "name": "frontend",
+      "command": "cd client && npm run dev"
+    }
+  ],
+  "ports": [
+    { "name": "backend", "port": 5000 },
+    { "name": "frontend", "port": 5173 }
+  ]
+}
