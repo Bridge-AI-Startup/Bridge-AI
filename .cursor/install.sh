@@ -38,10 +38,10 @@ echo "==> Ensuring client/.env exists"
 if [ ! -f "$REPO_ROOT/client/.env" ]; then
   cat > "$REPO_ROOT/client/.env" <<'EOF'
 VITE_API_URL=http://localhost:5000
-# Required for client-side Firebase authentication flows.
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
+# Placeholder values let the app render; real values are required for auth flows to succeed.
+VITE_FIREBASE_API_KEY=demo-api-key
+VITE_FIREBASE_AUTH_DOMAIN=demo-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=demo-project
 EOF
 fi
 
